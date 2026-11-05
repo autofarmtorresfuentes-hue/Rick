@@ -625,6 +625,11 @@ local Icons = loadstring(game:HttpGetAsync('https://raw.githubusercontent.com/Fo
 
 Icons.SetIconsType('lucide')
 
+-- Imagen del icono del menu y del boton de abrir.
+-- OJO: los enlaces de Discord caducan; si la imagen deja de verse,
+-- vuelve a subir el archivo y pega aqui la URL nueva.
+local ICON_URL = 'https://cdn.discordapp.com/attachments/1567752934761042010/1568004745837412492/file_00000000d25c8212ac96082d082d82a5.png?ex=6aee3db7&is=6aecec37&hm=439d0982fed91191f511d942396d27f698b6344d4ef95c4bfb29f924b1f38575&'
+
 local themeName = 'Dark'
 
 pcall(function()
@@ -643,8 +648,8 @@ pcall(function()
 end)
 
 local Window = WindUI:CreateWindow({
-    Icon = 'rbxassetid://121136649812616',
-    IconThemed = true,
+    Icon = ICON_URL,
+    IconThemed = false,
     Title = "Montana V2 Gratis",
     Author = 'by rick | https://discord.gg/xGN6TuUQz',
     Folder = "Montana V2",
@@ -660,8 +665,12 @@ local Window = WindUI:CreateWindow({
     ScrollBarEnabled = false,
     OpenButton = {
         Title = "Montana V2 Gratis",
-        CornerRadius = UDim.new(1, 0),
+        Icon = ICON_URL,
+        OnlyIcon = true,
+        Scale = 1.4,
+        CornerRadius = UDim.new(0, 0),
         StrokeThickness = 3,
+        Color = ColorSequence.new(Color3.fromHex('#ff1128'), Color3.fromHex('#8a0d1a')),
         Enabled = true,
         Draggable = true,
         OnlyMobile = false,
