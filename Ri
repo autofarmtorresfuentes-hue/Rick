@@ -666,7 +666,7 @@ local Window = WindUI:CreateWindow({
     OpenButton = {
         Title = "Montana V2 Gratis",
         Icon = ICON_URL,
-        OnlyIcon = false,
+        OnlyIcon = true,
         Scale = 1.4,
         CornerRadius = UDim.new(0, 0),
         StrokeThickness = 3,
@@ -1664,6 +1664,12 @@ UGStroke.Thickness = 1.2
 UGStroke.Color = Color3.fromRGB(255, 100, 0)
 UGStroke.Transparency = 0.5
 UGStroke.Parent = UGFrame
+
+-- version un poco mas pequena del widget original
+local UGScale = Instance.new('UIScale')
+
+UGScale.Scale = 0.85
+UGScale.Parent = UGFrame
 
 local UGTitleBar = Instance.new('Frame')
 
@@ -2663,6 +2669,258 @@ CombatTab:Toggle({
         end
     end,
 })
+
+do
+
+-- ===========================================================
+-- Auto Attack + Melee Aura (traidos de PROMETHEUS)
+-- - Auto Attack: golpea solo al jugador mas cercano con
+--   Fists o cualquier herramienta melee, auto-equipandola.
+-- - Melee Aura: modifica los atributos 6 y 7 (ordenados) de
+--   Fists y de las herramientas melee a 360 y 20; al apagar
+--   restaura los valores originales.
+-- ===========================================================
+local PromeAutoAttackEnabled = false
+local PromeMeleeAuraEnabled = false
+local PromeLastAutoAttack = 0
+local PromeSavedToolAttrs = {}
+local PromeMeleeList = {}
+
+do
+    local itemsFolder = ReplicatedStorage:FindFirstChild('Items')
+
+    if itemsFolder then
+        local meleeFolder = itemsFolder:FindFirstChild('melee')
+
+        if meleeFolder then
+            for _, toolItem in ipairs(meleeFolder:GetChildren()) do
+                table.insert(PromeMeleeList, toolItem.Name)
+            end
+        end
+    end
+end
+
+local function PromeIsMeleeTool(tool)
+    if not tool:IsA('Tool') then
+        return false
+    end
+
+    if tool.Name == 'Fists' then
+        return true
+    end
+
+    for _, toolName in ipairs(PromeMeleeList) do
+        if tool.Name == toolName then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function PromeModifyTool(tool, enable)
+    local attrNames = {}
+
+    for attrName in pairs(tool:GetAttributes()) do
+        table.insert(attrNames, attrName)
+    end
+
+    table.sort(attrNames)
+
+    if #attrNames < 7 then
+        return
+    end
+
+    local attr6 = attrNames[6]
+    local attr7 = attrNames[7]
+
+    if enable then
+        if PromeSavedToolAttrs[tool] == nil then
+            PromeSavedToolAttrs[tool] = {}
+        end
+
+        -- false = el atributo no existia y hay que borrarlo al restaurar
+        if PromeSavedToolAttrs[tool][attr6] == nil then
+            PromeSavedToolAttrs[tool][attr6] = tool:GetAttribute(attr6) or false
+        end
+
+        if PromeSavedToolAttrs[tool][attr7] == nil then
+            PromeSavedToolAttrs[tool][attr7] = tool:GetAttribute(attr7) or false
+        end
+
+        tool:SetAttribute(attr6, 360)
+        tool:SetAttribute(attr7, 20)
+    else
+        local saved = PromeSavedToolAttrs[tool]
+
+        if saved then
+            local saved6 = saved[attr6]
+            local saved7 = saved[attr7]
+
+            if saved6 ~= nil then
+                if saved6 == false then
+                    tool:SetAttribute(attr6, nil)
+                else
+                    tool:SetAttribute(attr6, saved6)
+                end
+            end
+
+            if saved7 ~= nil then
+                if saved7 == false then
+                    tool:SetAttribute(attr7, nil)
+                else
+                    tool:SetAttribute(attr7, saved7)
+                end
+            end
+        end
+    end
+end
+
+local function PromeMeleeAuraApply()
+    local character = Client.Character
+    local backpack = Client:FindFirstChild('Backpack')
+
+    if not character or not backpack then
+        return
+    end
+
+    local tools = {}
+
+    for _, tool in ipairs(character:GetChildren()) do
+        if PromeIsMeleeTool(tool) then
+            table.insert(tools, tool)
+        end
+    end
+
+    for _, tool in ipairs(backpack:GetChildren()) do
+        if PromeIsMeleeTool(tool) then
+            table.insert(tools, tool)
+        end
+    end
+
+    for _, tool in ipairs(tools) do
+        pcall(function()
+            PromeModifyTool(tool, PromeMeleeAuraEnabled)
+        end)
+    end
+end
+
+RunService.Heartbeat:Connect(function()
+    if PromeMeleeAuraEnabled then
+        PromeMeleeAuraApply()
+    end
+end)
+
+Client.CharacterAdded:Connect(function()
+    task.wait(1)
+
+    if PromeMeleeAuraEnabled then
+        PromeMeleeAuraApply()
+    end
+end)
+
+local function PromeGetMeleeTool()
+    local character = Client.Character
+
+    if not character then
+        return nil
+    end
+
+    local equipped = character:FindFirstChildOfClass('Tool')
+
+    if equipped and PromeIsMeleeTool(equipped) then
+        return equipped
+    end
+
+    local backpack = Client:FindFirstChild('Backpack')
+
+    if backpack then
+        for _, tool in ipairs(backpack:GetChildren()) do
+            if PromeIsMeleeTool(tool) then
+                return tool
+            end
+        end
+    end
+
+    return nil
+end
+
+task.spawn(function()
+    while task.wait(0.1) do
+        if PromeAutoAttackEnabled then
+            local now = os.clock()
+
+            if now - PromeLastAutoAttack >= 0.25 then
+                local rootPart = Client.Character and Client.Character:FindFirstChild('HumanoidRootPart')
+
+                if rootPart then
+                    local nearestTarget = nil
+                    local nearestPlayer = nil
+                    local nearestDist = 15
+
+                    for _, pl in ipairs(Players:GetPlayers()) do
+                        if pl ~= Client and pl.Character then
+                            local targetRoot = pl.Character:FindFirstChild('HumanoidRootPart')
+
+                            if targetRoot then
+                                local dist = (targetRoot.Position - rootPart.Position).Magnitude
+
+                                if dist < nearestDist then
+                                    nearestTarget = targetRoot
+                                    nearestPlayer = pl
+                                    nearestDist = dist
+                                end
+                            end
+                        end
+                    end
+
+                    if nearestTarget then
+                        local tool = PromeGetMeleeTool()
+
+                        if tool then
+                            PromeLastAutoAttack = now
+
+                            pcall(function()
+                                Net.send('melee_attack', tool, {nearestPlayer}, nearestTarget.CFrame, 0)
+                            end)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+CombatTab:Section({
+    Title = 'PROMETHEUS:',
+})
+
+CombatTab:Toggle({
+    Title = 'Auto Attack',
+    Desc = 'Golpea al jugador mas cercano con tu arma melee',
+    Flag = 'auto_attack_prome',
+    Icon = 'check',
+    Type = 'Checkbox',
+    Default = false,
+    Callback = function(state)
+        PromeAutoAttackEnabled = state
+    end,
+})
+
+CombatTab:Toggle({
+    Title = 'Melee Aura',
+    Desc = 'Modifica Fists y herramientas melee (restaura al apagar)',
+    Flag = 'melee_aura_prome',
+    Icon = 'check',
+    Type = 'Checkbox',
+    Default = false,
+    Callback = function(state)
+        PromeMeleeAuraEnabled = state
+        PromeMeleeAuraApply()
+    end,
+})
+
+end
 
 local WeaponTab = Window:Tab({
     Title = 'Weapon',
@@ -4253,277 +4511,6 @@ RunService.Heartbeat:Connect(function()
         d.amountLabel.Text = amount and ('[ ' .. amount .. ' ]') or ''
     end
 end)
-
-do
-
--- ===========================================================
--- Item ESP (traido de PROMETHEUS): circulo + nombre + cantidad
--- para los 20 items sueltos mas cercanos, con color por rareza.
--- La lista de items se actualiza cada 12 segundos.
--- ===========================================================
-_G.ItemESPEnabled = false
-
-local itemESP_data = {}
-local ITEM_ESP_REFRESH = 12
-local ITEM_ESP_MAX = 20
-
-local function itemESPDestroy(item)
-    local d = itemESP_data[item]
-
-    if not d then
-        return
-    end
-
-    pcall(function()
-        d.circle:Remove()
-    end)
-    pcall(function()
-        d.innerCircle:Remove()
-    end)
-    pcall(function()
-        d.name:Remove()
-    end)
-    pcall(function()
-        d.amount:Remove()
-    end)
-    pcall(function()
-        if d.highlight then
-            d.highlight:Destroy()
-        end
-    end)
-
-    itemESP_data[item] = nil
-end
-
-local function itemESPClear()
-    for item in pairs(itemESP_data) do
-        itemESPDestroy(item)
-    end
-end
-
-local function itemESPCreate(item)
-    if itemESP_data[item] then
-        return
-    end
-
-    local color = getItemRarityColor(item.Name)
-    local d = {}
-
-    d.circle = Drawing.new('Circle')
-    d.circle.Thickness = 2
-    d.circle.Transparency = 0.7
-    d.circle.Filled = false
-    d.circle.NumSides = 32
-    d.circle.Visible = false
-
-    d.innerCircle = Drawing.new('Circle')
-    d.innerCircle.Thickness = 2
-    d.innerCircle.Transparency = 1
-    d.innerCircle.Filled = true
-    d.innerCircle.NumSides = 32
-    d.innerCircle.Visible = false
-
-    d.name = Drawing.new('Text')
-    d.name.Outline = true
-    d.name.OutlineColor = Color3.fromRGB(0, 0, 0)
-    d.name.Center = true
-    d.name.Size = 16
-    d.name.Font = 4
-    d.name.Visible = false
-
-    d.amount = Drawing.new('Text')
-    d.amount.Outline = true
-    d.amount.OutlineColor = Color3.fromRGB(0, 0, 0)
-    d.amount.Center = true
-    d.amount.Size = 13
-    d.amount.Color = Color3.fromRGB(200, 200, 200)
-    d.amount.Visible = false
-
-    d.highlight = Instance.new('Highlight')
-    d.highlight.Name = 'ItemESP_Highlight'
-    d.highlight.FillColor = color
-    d.highlight.FillTransparency = 0.5
-    d.highlight.OutlineColor = color
-    d.highlight.OutlineTransparency = 0.1
-    d.highlight.Adornee = item
-    d.highlight.Enabled = false
-    d.highlight.Parent = item
-
-    itemESP_data[item] = d
-end
-
-local function itemESPRescan()
-    if not RootPart or not RootPart.Parent then
-        RootPart = Client.Character and Client.Character:FindFirstChild('HumanoidRootPart')
-    end
-
-    if not RootPart then
-        return
-    end
-
-    local found = {}
-
-    for _, item in ipairs(Dropped:GetChildren()) do
-        if item:IsA('Model') and item:FindFirstChild('PickUpZone') and not item:GetAttribute('Locked') then
-            local ok, pos = pcall(function()
-                return item.PickUpZone.Position
-            end)
-
-            if ok and pos then
-                table.insert(found, { item = item, dist = (pos - RootPart.Position).Magnitude })
-            end
-        end
-    end
-
-    table.sort(found, function(a, b)
-        return a.dist < b.dist
-    end)
-
-    local keep = {}
-
-    for i = 1, math.min(ITEM_ESP_MAX, #found) do
-        local item = found[i].item
-
-        keep[item] = true
-        itemESPCreate(item)
-    end
-
-    for item in pairs(itemESP_data) do
-        if not keep[item] then
-            itemESPDestroy(item)
-        end
-    end
-end
-
--- Refresco de la lista de items cada 12 segundos
-task.spawn(function()
-    while task.wait(ITEM_ESP_REFRESH) do
-        if _G.ItemESPEnabled then
-            pcall(itemESPRescan)
-        end
-    end
-end)
-
-RunService.RenderStepped:Connect(function()
-    if not _G.ItemESPEnabled then
-        for _, d in pairs(itemESP_data) do
-            d.circle.Visible = false
-            d.innerCircle.Visible = false
-            d.name.Visible = false
-            d.amount.Visible = false
-
-            if d.highlight then
-                d.highlight.Enabled = false
-            end
-        end
-
-        return
-    end
-
-    for item in pairs(itemESP_data) do
-        if not item.Parent then
-            itemESPDestroy(item)
-        end
-    end
-
-    if not RootPart or not RootPart.Parent then
-        return
-    end
-
-    for item, d in pairs(itemESP_data) do
-        local zone = item:FindFirstChild('PickUpZone')
-
-        if not zone then
-            d.circle.Visible = false
-            d.innerCircle.Visible = false
-            d.name.Visible = false
-            d.amount.Visible = false
-
-            if d.highlight then
-                d.highlight.Enabled = false
-            end
-        else
-            local pos, onScreen = Camera:WorldToViewportPoint(zone.Position)
-
-            if onScreen then
-                local color = getItemRarityColor(item.Name)
-                local radius = math.clamp(100 / math.max(pos.Z, 1), 3, 6)
-
-                if d.highlight then
-                    d.highlight.FillColor = color
-                    d.highlight.OutlineColor = color
-                    d.highlight.Enabled = true
-                end
-
-                d.circle.Position = Vector2.new(pos.X, pos.Y)
-                d.circle.Radius = radius + 5
-                d.circle.Color = color
-                d.circle.Visible = true
-
-                d.innerCircle.Position = Vector2.new(pos.X, pos.Y)
-                d.innerCircle.Radius = radius
-                d.innerCircle.Color = color
-                d.innerCircle.Visible = true
-
-                d.name.Color = color
-                d.name.Position = Vector2.new(pos.X, pos.Y - radius - 20)
-                d.name.Text = item.Name
-                d.name.Visible = true
-
-                local amount = tonumber(item:GetAttribute('Amount')) or 1
-
-                d.amount.Position = Vector2.new(pos.X, pos.Y + radius + 15)
-                d.amount.Text = amount > 1 and ('[' .. tostring(amount) .. ']') or ''
-                d.amount.Visible = amount > 1
-            else
-                d.circle.Visible = false
-                d.innerCircle.Visible = false
-                d.name.Visible = false
-                d.amount.Visible = false
-
-                if d.highlight then
-                    d.highlight.Enabled = false
-                end
-            end
-        end
-    end
-end)
-
-VisualTab:Toggle({
-    Title = 'Item ESP (12s)',
-    Desc = 'Circulo + nombre + cantidad de los 20 items mas cercanos',
-    Flag = 'item_esp_12s',
-    Icon = 'check',
-    Type = 'Checkbox',
-    Value = false,
-    Callback = function(state)
-        if state and not (Drawing and Drawing.new) then
-            _G.ItemESPEnabled = false
-            WindUI:Notify({
-                Title = 'Item ESP',
-                Content = 'Drawing no disponible en este ejecutor',
-                Duration = 2,
-            })
-
-            return
-        end
-
-        _G.ItemESPEnabled = state
-
-        if state then
-            itemESPRescan()
-            WindUI:Notify({
-                Title = 'Item ESP',
-                Content = 'Enabled (refresh 12s)',
-                Duration = 2,
-            })
-        else
-            itemESPClear()
-        end
-    end,
-})
-
-end
 
 local MiscTab = Window:Tab({
     Title = 'Misc',
