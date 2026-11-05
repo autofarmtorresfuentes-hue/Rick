@@ -1,5 +1,3 @@
--- ts file was generated at discord.gg/25ms
-
 local CarGuardEnabled = false
 local oldFireServer
 
@@ -631,8 +629,7 @@ local Window = WindUI:CreateWindow({
     Icon = 'rbxassetid://121136649812616',
     IconThemed = true,
     Title = "rick hub | Freemium",
-    Icon = 'rbxassetid://121136649812616',
-    Author = 'by rick | ,
+    Author = 'by rick',
     Folder = "rick hub",
     Size = UDim2.fromOffset(400, 400),
     MinSize = Vector2.new(560, 350),
@@ -657,11 +654,6 @@ local Window = WindUI:CreateWindow({
 Window:Tag({
     Title = 'v1.0.4',
     Color = Color3.fromHex('#30ff6a'),
-    Radius = 13,
-})
-Window:Tag({
-    Title = 'Blockspin',
-    Color = Color3.fromHex('#FF0000'),
     Radius = 13,
 })
 
@@ -856,14 +848,13 @@ local function GetDistanceFromRootPart(target)
     local char = player.Character
     local root = char and char:FindFirstChild('HumanoidRootPart')
     if not root then return math.huge end
-    
+
     return (root.Position - target.Position).Magnitude
 end
 
 _G.AutoPickItems = false
 _G.BlacklistRarity = {}
 
--- สร้างระบบจำค่า Rarity (Cache) เพื่อไม่ให้ลูปค้นหาใน ReplicatedStorage ทุกรอบ
 local itemRarityCache = {}
 local itemsFolder = ReplicatedStorage:FindFirstChild('Items')
 
@@ -883,7 +874,6 @@ local function IsBlacklisted(item)
     local dropName = item:GetAttribute('ItemName') or item.Name
     if not dropName then return false end
 
-    -- ดึงค่าจาก Cache ออกมาเช็คได้ทันที (เร็วขึ้นกว่าเดิม 1000 เท่า)
     local rarity = itemRarityCache[dropName]
     if rarity then
         for _, r in ipairs(_G.BlacklistRarity) do
@@ -896,22 +886,18 @@ local function IsBlacklisted(item)
     return false
 end
 
--- ลูปทำงานหลัก
 task.spawn(function()
     while true do
-        -- ปรับเป็นเช็คทุกๆ 0.1 วินาที (10 ครั้งต่อวินาที) แทนการเช็คทุกเฟรม ช่วยลดอาการแลคได้เกือบ 100%
-        task.wait(0.1) 
-        
+        task.wait(0.1)
+
         if _G.AutoPickItems then
             for _, v in ipairs(dropfolder:GetChildren()) do
-                -- ตรวจสอบเงื่อนไขเปิดใช้งานอีกครั้งเผื่อปิดระหว่างวนลูป
-                if not _G.AutoPickItems then break end 
-                
+                if not _G.AutoPickItems then break end
+
                 if v and not v:GetAttribute('Locked') then
                     if not IsBlacklisted(v) then
                         local zone = v:FindFirstChild('PickUpZone')
                         if zone then
-                            -- ขยายโซนเก็บของให้กว้างขึ้น
                             if zone.Size ~= Vector3.new(22, 22, 22) then
                                 zone.Size = Vector3.new(22, 22, 22)
                                 zone.CanCollide = false
@@ -920,8 +906,7 @@ task.spawn(function()
                             local dist = GetDistanceFromRootPart(zone)
                             if dist < math.huge then
                                 Net.get('pickup_dropped_item', v)
-                                -- ใส่ Cooldown เล็กๆ (0.02 วินาที) ป้องกันการส่ง Data ไป Server ถี่เกินไปจนโดนเตะหรือค้าง
-                                task.wait(0.02) 
+                                task.wait(0.02)
                             end
                         end
                     end
@@ -931,7 +916,6 @@ task.spawn(function()
     end
 end)
 
--- ปุ่มเปิด/ปิดในเมนู UI
 MainTab:Toggle({
     Title = 'Auto Pick Item',
     Flag = 'Pickitem',
@@ -964,7 +948,6 @@ MainTab:Dropdown({
     end,
 })
 
--- Auto Drop Feature
 local AutoDropEnabled = false
 local SelectedRarity = { 'Common' }
 
@@ -1000,12 +983,11 @@ MainTab:Dropdown({
     end,
 })
 
--- Auto Drop Loop
 local function findRarityByItemName(itemName)
     if not itemName or itemName == "" then return "Unknown" end
-    
+
     local itemsDataFolder = ReplicatedStorage:WaitForChild("Items")
-    
+
     for _, itemData in pairs(itemsDataFolder:GetDescendants()) do
         if itemData.Name == itemName then
             local rarity = itemData:GetAttribute("RarityName") or "Common"
@@ -1020,20 +1002,19 @@ task.spawn(function()
         if AutoDropEnabled then
             local pGui = Player:WaitForChild("PlayerGui")
             local scrollingFrame = pGui:WaitForChild("Items").ItemsHolder.ItemsScrollingFrame
-            
+
             for _, obj in pairs(scrollingFrame:GetChildren()) do
                 local guid = obj:GetAttribute("GUID")
-                
+
                 if guid then
                     local nameText = ""
                     local itemNameObj = obj:FindFirstChild("ItemName", true)
                     if itemNameObj and (itemNameObj:IsA("TextLabel") or itemNameObj:IsA("TextBox")) then
                         nameText = itemNameObj.Text
                     end
-                    
+
                     local rarityName = findRarityByItemName(nameText)
-                    
-                    -- Check if rarity is in selected rarities (multi-selection support)
+
                     local shouldDrop = false
                     for _, selected in pairs(SelectedRarity) do
                         if rarityName == selected then
@@ -1041,19 +1022,19 @@ task.spawn(function()
                             break
                         end
                     end
-                    
+
                     if shouldDrop then
                         local itemCount = 1
                         local itemCountObj = obj:FindFirstChild("ItemCount", true)
                         if itemCountObj and (itemCountObj:IsA("TextLabel") or itemCountObj:IsA("TextBox")) then
-                            local countText = itemCountObj.Text:gsub("[^%d]", "") -- Extract only numbers
+                            local countText = itemCountObj.Text:gsub("[^%d]", "")
                             itemCount = tonumber(countText) or 1
                         end
-                        
+
                         pcall(function()
                             Net.send("drop_item", guid, itemCount)
                         end)
-                        task.wait() -- Small delay between drops
+                        task.wait()
                     end
                 end
             end
@@ -2781,7 +2762,6 @@ VehicleTab:Toggle({
 })
 VehicleTab:Divider()
 
--- Exact Vehicle System from sasware.lua
 local Storage = {
 	Vehicle_Attributes = {
 		{ Name = "acceleration", Type = "number", Min = 5, Max = 100, DisplayName = "Acceleration" },
@@ -2828,7 +2808,6 @@ local function G_Option(OptionName: string): any
     return value
 end
 
--- Exact vehicle functions from sasware.lua
 local function Sit(VehicleSeat: VehicleSeat, NYield: boolean?)
     local Vehicle = VehicleSeat.Parent :: BasePart
     local Prompt = Vehicle.Chassis.DrivePromptAttachment.DrivePrompt
@@ -2836,13 +2815,11 @@ local function Sit(VehicleSeat: VehicleSeat, NYield: boolean?)
 
     local Origin = Character:GetPivot()
 
-    -- Try sitting in the car first
     fireproximityprompt(Prompt, 0.5)
     if not NYield then
         task.wait(0.5)
         if not Character.Humanoid.SeatPart then
-            -- Attempting to gain network ownership of vehicle seat...
-            
+
             local AttemptNetworkOwnershipStart = os.clock()
             while os.clock() - AttemptNetworkOwnershipStart < 0.3 and Character.Humanoid.SeatPart == nil do
                 RunService.Heartbeat:Wait()
@@ -2861,10 +2838,8 @@ local function Sit(VehicleSeat: VehicleSeat, NYield: boolean?)
             end
 
             if Character.Humanoid.SeatPart == nil then
-                -- Failed to sit in vehicle seat.
                 return
             else
-                -- Successfully sat in vehicle seat.
             end
         else
             Character:PivotTo(Vehicle:GetPivot())
@@ -2896,11 +2871,10 @@ end
 local FindVehicle = function(): { Vehicle: Model?, Name: string? }?
     local Vehicles = workspace:WaitForChild("Vehicles")
     local LocalUserId = LocalPlayer.UserId
-    
+
     print("FindVehicle: Looking for vehicles, LocalUserId:", LocalUserId)
     print("FindVehicle: Vehicles folder has", #Vehicles:GetChildren(), "children")
-    
-    -- First try to find owned vehicle
+
     for _, Vehicle in next, Vehicles:GetChildren() do
         local ownerId = Vehicle:GetAttribute("OwnerUserId")
         print("FindVehicle: Found vehicle", Vehicle.Name, "with OwnerUserId:", ownerId)
@@ -2912,8 +2886,7 @@ local FindVehicle = function(): { Vehicle: Model?, Name: string? }?
             }
         end
     end
-    
-    -- Alternative: Check if player is sitting in any vehicle
+
     local Character = LocalPlayer.Character
     if Character then
         local Humanoid = Character:FindFirstChildOfClass("Humanoid")
@@ -2926,12 +2899,11 @@ local FindVehicle = function(): { Vehicle: Model?, Name: string? }?
             }
         end
     end
-    
+
     print("FindVehicle: No matching vehicle found")
     return nil
 end
 
--- Exact VehicleModSystem from sasware.lua
 local VehicleModSystem
 VehicleModSystem = {
 	AttributeInfos = Storage.Vehicle_Attributes,
@@ -3170,7 +3142,6 @@ function VehicleModSystem:Step()
 	self:ApplySlamModifier(vehicle)
 end
 
--- Vehicle UI
 VehicleTab:Section({
     Title = 'Vehicle Functions:',
 })
@@ -3181,7 +3152,7 @@ VehicleTab:Button({
     Callback = function()
         local Vehicles = workspace:WaitForChild("Vehicles")
         local LocalUserId = LocalPlayer.UserId
-        
+
         for _, Vehicle in next, Vehicles:GetChildren() do
             if Vehicle:GetAttribute("OwnerUserId") == LocalUserId then
                 local Character = LocalPlayer.Character
@@ -3213,7 +3184,6 @@ VehicleTab:Toggle({
     Callback = function(Value)
         if not Value then
             VehicleModSystem:Reset()
-            -- Turn off VehicleSlam when VehicleModificationEnabled is turned off
             local window = getgenv().Window
             if window and window.Toggles and window.Toggles.VehicleSlam then
                 window.Toggles.VehicleSlam:SetValue(false)
@@ -3239,7 +3209,6 @@ VehicleTab:Toggle({
     end,
 })
 
--- Create sliders for each vehicle attribute (exact from sasware.lua - no callbacks)
 for _, Attribute in next, Storage.Vehicle_Attributes do
     if Attribute.Type == "number" then
         VehicleTab:Slider({
@@ -3277,26 +3246,23 @@ VehicleTab:Slider({
     },
 })
 
--- Vehicle Mod System Update Loop (Exact from sasware.lua)
 task.spawn(function()
     while task.wait(0.25) do
         VehicleModSystem:Step()
     end
 end)
 
--- Additional UI Update Loop from sasware.lua
 task.spawn(function()
     while task.wait(0.5) do
         if G_Toggle("VehicleModificationEnabled") then
             local VehicleData = FindVehicle()
             if VehicleData then
                 local Vehicle = VehicleData.Vehicle
-                
+
                 task.spawn(function()
                     for _, Child in next, Vehicle:GetChildren() do
                         if Child:IsA("Folder") then
                             for Attribute, _ in next, Child:GetAttributes() do
-                                -- Check if this is one of the targetted attributes
                                 for _, VehicleAttribute in next, Storage.Vehicle_Attributes do
                                     if Attribute == VehicleAttribute.Name then
                                         Child:SetAttribute(
@@ -3336,7 +3302,6 @@ task.spawn(function()
     end
 end)
 
--- 1. Setup Tab
 local VisualTab = Window:Tab({
     Title = 'Visual',
     Icon = 'eye',
@@ -3346,7 +3311,6 @@ VisualTab:Section({
     Title = 'Players:',
 })
 
--- 2. Configuration (เปิดตาม Toggle เท่านั้น)
 _G.ShowBox = false
 _G.ShowName = false
 _G.ShowTracer = false
@@ -3366,13 +3330,12 @@ local function CreateESP(player)
     for i = 1, 12 do objects.BoxLines[i] = Drawing.new("Line") end
     for i = 1, 6 do objects.SkeletonLines[i] = Drawing.new("Line") end
 
-    -- Setup Styles
     objects.Name.Center = true
     objects.Name.Outline = true
     objects.Name.Size = 14
     objects.Name.Font = 2
     objects.Name.Color = Color3.fromRGB(255, 255, 255)
-    
+
     objects.HealthBar.Thickness = 2
     objects.HealthBarOutline.Thickness = 3
     objects.HealthBarOutline.Color = Color3.fromRGB(0, 0, 0)
@@ -3384,25 +3347,22 @@ local function CreateESP(player)
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             local hum = char and char:FindFirstChild("Humanoid")
 
-            -- ถ้าผู้เล่นออกจากเกม หรือตัวละครหายไป ให้ลบ Object และตัดการเชื่อมต่อ
             if not player.Parent then
-                for _, obj in pairs(objects) do 
-                    if type(obj) == "table" then for _, v in pairs(obj) do v:Remove() end 
-                    else obj:Remove() end 
+                for _, obj in pairs(objects) do
+                    if type(obj) == "table" then for _, v in pairs(obj) do v:Remove() end
+                    else obj:Remove() end
                 end
                 connection:Disconnect()
                 return
             end
 
-            -- เช็คว่าควรแสดงผลหรือไม่ (ต้องมีตัวละคร, เลือด > 0)
             local canShow = hrp and hum and hum.Health > 0
             local hrp_pos, onScreen = nil, false
-            
+
             if canShow then
                 hrp_pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
             end
 
-            -- 1. Tracer
             if canShow and onScreen and _G.ShowTracer then
                 objects.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
                 objects.Tracer.To = Vector2.new(hrp_pos.X, hrp_pos.Y)
@@ -3410,24 +3370,23 @@ local function CreateESP(player)
                 objects.Tracer.Visible = true
             else objects.Tracer.Visible = false end
 
-            -- 2. Name & Health Bar
             local head = char and char:FindFirstChild("Head")
             if canShow and onScreen and head then
                 local head_pos = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 1.5, 0))
-                
+
                 if _G.ShowName then
                     objects.Name.Position = Vector2.new(head_pos.X, head_pos.Y - 20)
                     objects.Name.Text = string.format("[%s]", player.Name)
                     objects.Name.Visible = true
                 else objects.Name.Visible = false end
-                
+
                 if _G.ShowHealth then
                     local bar_x = head_pos.X - 25
                     local health_p = hum.Health / hum.MaxHealth
                     objects.HealthBarOutline.From = Vector2.new(bar_x, head_pos.Y - 5)
                     objects.HealthBarOutline.To = Vector2.new(bar_x + 50, head_pos.Y - 5)
                     objects.HealthBarOutline.Visible = true
-                    
+
                     objects.HealthBar.From = Vector2.new(bar_x, head_pos.Y - 5)
                     objects.HealthBar.To = Vector2.new(bar_x + (50 * health_p), head_pos.Y - 5)
                     objects.HealthBar.Color = Color3.fromHSV(health_p * 0.3, 1, 1)
@@ -3442,7 +3401,6 @@ local function CreateESP(player)
                 objects.HealthBarOutline.Visible = false
             end
 
-            -- 3. 3D Box
             if canShow and onScreen and _G.ShowBox then
                 local size = Vector3.new(2, 5, 1.2)
                 local cf = hrp.CFrame
@@ -3463,12 +3421,11 @@ local function CreateESP(player)
                 end
             else for i=1,12 do objects.BoxLines[i].Visible = false end end
 
-            -- 4. Skeleton
             if canShow and onScreen and _G.ShowSkeleton then
                 local parts = {"Head", "UpperTorso", "LowerTorso", "LeftUpperArm", "RightUpperArm", "LeftUpperLeg", "RightUpperLeg"}
                 local v_skel = true
                 for _, p in pairs(parts) do if not char:FindFirstChild(p) then v_skel = false break end end
-                
+
                 if v_skel then
                     local function ToS(p) return Camera:WorldToViewportPoint(char[p].Position) end
                     local j = {
@@ -3489,11 +3446,9 @@ local function CreateESP(player)
     coroutine.wrap(Update)()
 end
 
--- Initialize
 for _, p in pairs(Players:GetPlayers()) do if p ~= LocalPlayer then CreateESP(p) end end
 Players.PlayerAdded:Connect(function(p) if p ~= LocalPlayer then CreateESP(p) end end)
 
--- 3. UI Toggles
 VisualTab:Toggle({
     Title = "3D Box",
     Icon = 'check',
@@ -4116,7 +4071,7 @@ ServerTab:Button({
     Icon = 'log-in',
     Callback = function()
         if not Window.ServerCode or Window.ServerCode == '' then
-            warn('\u{e43}\u{e2a}\u{e48}code\u{e14}\u{e34}\u{e19}\u{e49}\u{e2d}\u{e07}')
+            warn('Please enter a server code')
 
             return
         end
