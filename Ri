@@ -625,24 +625,41 @@ local Icons = loadstring(game:HttpGetAsync('https://raw.githubusercontent.com/Fo
 
 Icons.SetIconsType('lucide')
 
+local themeName = 'Dark'
+
+pcall(function()
+    WindUI:AddTheme({
+        Name = 'Montana Red',
+        Accent = Color3.fromHex('#ff1128'),
+        Background = Color3.fromHex('#120a0c'),
+        Outline = Color3.fromHex('#33121a'),
+        Text = Color3.fromHex('#ffffff'),
+        Placeholder = Color3.fromHex('#8f8f8f'),
+        Button = Color3.fromHex('#2b1116'),
+        Icon = Color3.fromHex('#ff6b75'),
+    })
+
+    themeName = 'Montana Red'
+end)
+
 local Window = WindUI:CreateWindow({
     Icon = 'rbxassetid://121136649812616',
     IconThemed = true,
-    Title = "rick hub | Freemium",
-    Author = 'by rick',
-    Folder = "rick hub",
+    Title = "Montana V2 Gratis",
+    Author = 'by rick | https://discord.gg/xGN6TuUQz',
+    Folder = "Montana V2",
     Size = UDim2.fromOffset(400, 400),
     MinSize = Vector2.new(560, 350),
     MaxSize = Vector2.new(850, 560),
     Transparent = true,
-    Theme = 'Dark',
+    Theme = themeName,
     Resizable = true,
     SideBarWidth = 200,
     BackgroundImageTransparency = 0.42,
     HideSearchBar = false,
     ScrollBarEnabled = false,
     OpenButton = {
-        Title = "rick hub",
+        Title = "Montana V2 Gratis",
         CornerRadius = UDim.new(1, 0),
         StrokeThickness = 3,
         Enabled = true,
@@ -651,9 +668,13 @@ local Window = WindUI:CreateWindow({
     },
 })
 
+pcall(function()
+    WindUI:SetTheme(themeName)
+end)
+
 Window:Tag({
     Title = 'v1.0.4',
-    Color = Color3.fromHex('#30ff6a'),
+    Color = Color3.fromHex('#ff1128'),
     Radius = 13,
 })
 
