@@ -666,7 +666,7 @@ local Window = WindUI:CreateWindow({
     OpenButton = {
         Title = "Montana V2 Gratis",
         Icon = ICON_URL,
-        OnlyIcon = true,
+        OnlyIcon = false,
         Scale = 1.4,
         CornerRadius = UDim.new(0, 0),
         StrokeThickness = 3,
@@ -1521,6 +1521,8 @@ local YoffsetValue = 70
 func.EnabledSnap = function()
     local basePosition = RootPart.Position
 
+    _G.SnapBaseY = basePosition.Y
+
     while EnabledSnapRunning do
         task.wait()
 
@@ -1530,6 +1532,10 @@ func.EnabledSnap = function()
 
         local currentY = RootPart.Position.Y
         local targetY = basePosition.Y - YoffsetValue
+
+        if _G.SnapMode == 'up' then
+            targetY = basePosition.Y + YoffsetValue
+        end
         local deltaY = targetY - currentY
 
         RootPart.CFrame = RootPart.CFrame * CFrame.new(0, deltaY, 0)
@@ -1585,6 +1591,358 @@ MainTab:Slider({
         YoffsetValue = value
     end,
 })
+
+do
+
+-- ===========================================================
+-- Widget Underground flotante (traido de PROMETHEUS)
+-- Se conecta con el Underground de la pestana General:
+-- el boton Activar usa el mismo SetSnapState que el toggle y la tecla G.
+-- ===========================================================
+_G.SnapMode = _G.SnapMode or 'down'
+_G.SnapBaseY = _G.SnapBaseY or nil
+
+local SnapWidgetMode = _G.SnapMode
+local SnapDragging = false
+local SnapSliderDragging = false
+local UGDragStart, UGFrameStart
+local UpdateUGSlider
+
+local function SnapTeleportTo(targetY)
+    if RootPart and RootPart.Parent then
+        RootPart.CFrame = CFrame.new(RootPart.Position.X, targetY, RootPart.Position.Z)
+
+        pcall(function()
+            local sound = Instance.new('Sound')
+
+            sound.SoundId = 'rbxassetid://108156925383225'
+            sound.Volume = 1
+            sound.PlayOnRemove = true
+            sound.Parent = RootPart
+            sound:Destroy()
+        end)
+    end
+end
+
+local function SnapWidgetTargetY()
+    if not _G.SnapBaseY then
+        return nil
+    end
+
+    if SnapWidgetMode == 'up' then
+        return _G.SnapBaseY + YoffsetValue
+    end
+
+    return _G.SnapBaseY - YoffsetValue
+end
+
+local UGGui = Instance.new('ScreenGui')
+
+UGGui.Name = 'UGWidget'
+UGGui.ResetOnSpawn = false
+UGGui.IgnoreGuiInset = true
+UGGui.DisplayOrder = 999
+UGGui.Parent = PlayerGui
+
+local UGFrame = Instance.new('Frame')
+
+UGFrame.Size = UDim2.new(0, 220, 0, 200)
+UGFrame.Position = UDim2.new(0, 12, 0.5, -80)
+UGFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+UGFrame.BorderSizePixel = 0
+UGFrame.Active = true
+UGFrame.Parent = UGGui
+
+local UGCorner = Instance.new('UICorner')
+
+UGCorner.CornerRadius = UDim.new(0, 14)
+UGCorner.Parent = UGFrame
+
+local UGStroke = Instance.new('UIStroke')
+
+UGStroke.Thickness = 1.2
+UGStroke.Color = Color3.fromRGB(255, 100, 0)
+UGStroke.Transparency = 0.5
+UGStroke.Parent = UGFrame
+
+local UGTitleBar = Instance.new('Frame')
+
+UGTitleBar.Size = UDim2.new(1, 0, 0, 34)
+UGTitleBar.BackgroundColor3 = Color3.fromRGB(26, 26, 34)
+UGTitleBar.BorderSizePixel = 0
+UGTitleBar.Active = true
+UGTitleBar.Parent = UGFrame
+
+local UGTitleCorner = Instance.new('UICorner')
+
+UGTitleCorner.CornerRadius = UDim.new(0, 14)
+UGTitleCorner.Parent = UGTitleBar
+
+local UGTitle = Instance.new('TextLabel')
+
+UGTitle.Size = UDim2.new(1, -10, 1, 0)
+UGTitle.Position = UDim2.new(0, 10, 0, 0)
+UGTitle.BackgroundTransparency = 1
+UGTitle.Text = '⛏  Underground'
+UGTitle.Font = Enum.Font.GothamBold
+UGTitle.TextSize = 13
+UGTitle.TextColor3 = Color3.fromRGB(240, 240, 240)
+UGTitle.TextXAlignment = Enum.TextXAlignment.Left
+UGTitle.Parent = UGTitleBar
+
+UGTitleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        SnapDragging = true
+        UGDragStart = input.Position
+        UGFrameStart = UGFrame.Position
+    end
+end)
+
+local UGDownBtn = Instance.new('TextButton')
+
+UGDownBtn.Size = UDim2.new(0.5, -10, 0, 40)
+UGDownBtn.Position = UDim2.new(0, 8, 0, 40)
+UGDownBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 0)
+UGDownBtn.BorderSizePixel = 0
+UGDownBtn.Text = '⬇  Bajar'
+UGDownBtn.Font = Enum.Font.GothamBold
+UGDownBtn.TextSize = 13
+UGDownBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+UGDownBtn.AutoButtonColor = false
+UGDownBtn.Parent = UGFrame
+
+local UGDownCorner = Instance.new('UICorner')
+
+UGDownCorner.CornerRadius = UDim.new(0, 10)
+UGDownCorner.Parent = UGDownBtn
+
+local UGUpBtn = Instance.new('TextButton')
+
+UGUpBtn.Size = UDim2.new(0.5, -10, 0, 40)
+UGUpBtn.Position = UDim2.new(0.5, 2, 0, 40)
+UGUpBtn.BackgroundColor3 = Color3.fromRGB(38, 38, 50)
+UGUpBtn.BorderSizePixel = 0
+UGUpBtn.Text = '⬆  Subir'
+UGUpBtn.Font = Enum.Font.GothamBold
+UGUpBtn.TextSize = 13
+UGUpBtn.TextColor3 = Color3.fromRGB(140, 160, 200)
+UGUpBtn.AutoButtonColor = false
+UGUpBtn.Parent = UGFrame
+
+local UGUpCorner = Instance.new('UICorner')
+
+UGUpCorner.CornerRadius = UDim.new(0, 10)
+UGUpCorner.Parent = UGUpBtn
+
+local function UGUpdateModeVisual()
+    local info = TweenInfo.new(0.12)
+
+    if SnapWidgetMode == 'down' then
+        TweenService:Create(UGDownBtn, info, { BackgroundColor3 = Color3.fromRGB(255, 100, 0) }):Play()
+        UGDownBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        TweenService:Create(UGUpBtn, info, { BackgroundColor3 = Color3.fromRGB(38, 38, 50) }):Play()
+        UGUpBtn.TextColor3 = Color3.fromRGB(140, 160, 200)
+    else
+        TweenService:Create(UGUpBtn, info, { BackgroundColor3 = Color3.fromRGB(70, 140, 255) }):Play()
+        UGUpBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        TweenService:Create(UGDownBtn, info, { BackgroundColor3 = Color3.fromRGB(38, 38, 50) }):Play()
+        UGDownBtn.TextColor3 = Color3.fromRGB(200, 140, 100)
+    end
+end
+
+local function UGApplyMode()
+    local targetY = SnapWidgetTargetY()
+
+    if EnabledSnapRunning and targetY then
+        SnapTeleportTo(targetY)
+    end
+end
+
+UGDownBtn.MouseButton1Click:Connect(function()
+    SnapWidgetMode = 'down'
+    _G.SnapMode = 'down'
+    UGUpdateModeVisual()
+    UGApplyMode()
+end)
+
+UGUpBtn.MouseButton1Click:Connect(function()
+    SnapWidgetMode = 'up'
+    _G.SnapMode = 'up'
+    UGUpdateModeVisual()
+    UGApplyMode()
+end)
+
+local UGActivateBtn = Instance.new('TextButton')
+
+UGActivateBtn.Size = UDim2.new(1, -16, 0, 36)
+UGActivateBtn.Position = UDim2.new(0, 8, 0, 88)
+UGActivateBtn.BackgroundColor3 = Color3.fromRGB(38, 38, 50)
+UGActivateBtn.BorderSizePixel = 0
+UGActivateBtn.Text = '⏻  Activar'
+UGActivateBtn.Font = Enum.Font.GothamBold
+UGActivateBtn.TextSize = 14
+UGActivateBtn.TextColor3 = Color3.fromRGB(180, 180, 200)
+UGActivateBtn.AutoButtonColor = false
+UGActivateBtn.Parent = UGFrame
+
+local UGActivateCorner = Instance.new('UICorner')
+
+UGActivateCorner.CornerRadius = UDim.new(0, 10)
+UGActivateCorner.Parent = UGActivateBtn
+
+local UGWasActive = false
+
+local function UGUpdateActivateVisual()
+    if EnabledSnapRunning then
+        UGActivateBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 0)
+        UGActivateBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        UGActivateBtn.Text = SnapWidgetMode == 'down' and '⏻  Bajando...' or '⏻  Subiendo...'
+    else
+        UGActivateBtn.BackgroundColor3 = Color3.fromRGB(38, 38, 50)
+        UGActivateBtn.TextColor3 = Color3.fromRGB(180, 180, 200)
+        UGActivateBtn.Text = '⏻  Activar'
+    end
+end
+
+UGActivateBtn.MouseButton1Click:Connect(function()
+    SetSnapState(not EnabledSnapRunning)
+
+    if EnabledSnapRunning then
+        local targetY = SnapWidgetTargetY()
+
+        if targetY then
+            SnapTeleportTo(targetY)
+        end
+    else
+        _G.SnapBaseY = nil
+    end
+
+    UGUpdateActivateVisual()
+end)
+
+-- Sincroniza el widget cuando el snap se cambia desde el menu o con la tecla G
+task.spawn(function()
+    while task.wait(0.2) do
+        if EnabledSnapRunning ~= UGWasActive then
+            UGWasActive = EnabledSnapRunning
+            UGUpdateActivateVisual()
+        end
+    end
+end)
+
+local UGHeightLabel = Instance.new('TextLabel')
+
+UGHeightLabel.Size = UDim2.new(1, -16, 0, 16)
+UGHeightLabel.Position = UDim2.new(0, 8, 0, 132)
+UGHeightLabel.BackgroundTransparency = 1
+UGHeightLabel.Text = 'Distancia : ' .. tostring(YoffsetValue)
+UGHeightLabel.Font = Enum.Font.GothamMedium
+UGHeightLabel.TextSize = 12
+UGHeightLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+UGHeightLabel.TextXAlignment = Enum.TextXAlignment.Left
+UGHeightLabel.Parent = UGFrame
+
+local UGSliderBar = Instance.new('Frame')
+
+UGSliderBar.Size = UDim2.new(1, -16, 0, 22)
+UGSliderBar.Position = UDim2.new(0, 8, 0, 152)
+UGSliderBar.BackgroundColor3 = Color3.fromRGB(40, 40, 54)
+UGSliderBar.BorderSizePixel = 0
+UGSliderBar.Active = true
+UGSliderBar.Parent = UGFrame
+
+local UGSliderBarCorner = Instance.new('UICorner')
+
+UGSliderBarCorner.CornerRadius = UDim.new(0, 11)
+UGSliderBarCorner.Parent = UGSliderBar
+
+local UGSliderFill = Instance.new('Frame')
+
+UGSliderFill.BackgroundColor3 = Color3.fromRGB(255, 100, 0)
+UGSliderFill.BorderSizePixel = 0
+UGSliderFill.Size = UDim2.new(math.clamp((YoffsetValue - 1) / 299, 0, 1), 0, 1, 0)
+UGSliderFill.Parent = UGSliderBar
+
+local UGSliderFillCorner = Instance.new('UICorner')
+
+UGSliderFillCorner.CornerRadius = UDim.new(0, 11)
+UGSliderFillCorner.Parent = UGSliderFill
+
+local UGSliderKnob = Instance.new('Frame')
+
+UGSliderKnob.Size = UDim2.new(0, 22, 0, 22)
+UGSliderKnob.AnchorPoint = Vector2.new(0.5, 0.5)
+UGSliderKnob.Position = UDim2.new(math.clamp((YoffsetValue - 1) / 299, 0, 1), 0, 0.5, 0)
+UGSliderKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+UGSliderKnob.BorderSizePixel = 0
+UGSliderKnob.ZIndex = 3
+UGSliderKnob.Parent = UGSliderBar
+
+local UGSliderKnobCorner = Instance.new('UICorner')
+
+UGSliderKnobCorner.CornerRadius = UDim.new(1, 0)
+UGSliderKnobCorner.Parent = UGSliderKnob
+
+local UGKnobText = Instance.new('TextLabel')
+
+UGKnobText.Size = UDim2.new(1, 0, 1, 0)
+UGKnobText.BackgroundTransparency = 1
+UGKnobText.Text = tostring(YoffsetValue)
+UGKnobText.Font = Enum.Font.GothamBold
+UGKnobText.TextSize = 10
+UGKnobText.TextColor3 = Color3.fromRGB(50, 50, 60)
+UGKnobText.ZIndex = 4
+UGKnobText.Parent = UGSliderKnob
+
+UpdateUGSlider = function(inputPos)
+    local alpha = (inputPos.X - UGSliderBar.AbsolutePosition.X) / math.max(UGSliderBar.AbsoluteSize.X, 1)
+
+    alpha = math.clamp(alpha, 0, 1)
+
+    local value = math.clamp(math.floor(1 + alpha * 299 + 0.5), 1, 300)
+
+    YoffsetValue = value
+
+    local fill = (value - 1) / 299
+
+    UGSliderFill.Size = UDim2.new(fill, 0, 1, 0)
+    UGSliderKnob.Position = UDim2.new(fill, 0, 0.5, 0)
+    UGKnobText.Text = tostring(value)
+    UGHeightLabel.Text = 'Distancia : ' .. tostring(value)
+
+    if EnabledSnapRunning and _G.SnapBaseY then
+        SnapTeleportTo(SnapWidgetTargetY())
+    end
+end
+
+UGSliderBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        SnapSliderDragging = true
+        UpdateUGSlider(input.Position)
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        if SnapDragging then
+            local delta = input.Position - UGDragStart
+
+            UGFrame.Position = UDim2.new(UGFrameStart.X.Scale, UGFrameStart.X.Offset + delta.X, UGFrameStart.Y.Scale, UGFrameStart.Y.Offset + delta.Y)
+        end
+        if SnapSliderDragging then
+            UpdateUGSlider(input.Position)
+        end
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        SnapDragging = false
+        SnapSliderDragging = false
+    end
+end)
+
+end
 
 local CombatTab = Window:Tab({
     Title = 'Combat',
@@ -3895,6 +4253,277 @@ RunService.Heartbeat:Connect(function()
         d.amountLabel.Text = amount and ('[ ' .. amount .. ' ]') or ''
     end
 end)
+
+do
+
+-- ===========================================================
+-- Item ESP (traido de PROMETHEUS): circulo + nombre + cantidad
+-- para los 20 items sueltos mas cercanos, con color por rareza.
+-- La lista de items se actualiza cada 12 segundos.
+-- ===========================================================
+_G.ItemESPEnabled = false
+
+local itemESP_data = {}
+local ITEM_ESP_REFRESH = 12
+local ITEM_ESP_MAX = 20
+
+local function itemESPDestroy(item)
+    local d = itemESP_data[item]
+
+    if not d then
+        return
+    end
+
+    pcall(function()
+        d.circle:Remove()
+    end)
+    pcall(function()
+        d.innerCircle:Remove()
+    end)
+    pcall(function()
+        d.name:Remove()
+    end)
+    pcall(function()
+        d.amount:Remove()
+    end)
+    pcall(function()
+        if d.highlight then
+            d.highlight:Destroy()
+        end
+    end)
+
+    itemESP_data[item] = nil
+end
+
+local function itemESPClear()
+    for item in pairs(itemESP_data) do
+        itemESPDestroy(item)
+    end
+end
+
+local function itemESPCreate(item)
+    if itemESP_data[item] then
+        return
+    end
+
+    local color = getItemRarityColor(item.Name)
+    local d = {}
+
+    d.circle = Drawing.new('Circle')
+    d.circle.Thickness = 2
+    d.circle.Transparency = 0.7
+    d.circle.Filled = false
+    d.circle.NumSides = 32
+    d.circle.Visible = false
+
+    d.innerCircle = Drawing.new('Circle')
+    d.innerCircle.Thickness = 2
+    d.innerCircle.Transparency = 1
+    d.innerCircle.Filled = true
+    d.innerCircle.NumSides = 32
+    d.innerCircle.Visible = false
+
+    d.name = Drawing.new('Text')
+    d.name.Outline = true
+    d.name.OutlineColor = Color3.fromRGB(0, 0, 0)
+    d.name.Center = true
+    d.name.Size = 16
+    d.name.Font = 4
+    d.name.Visible = false
+
+    d.amount = Drawing.new('Text')
+    d.amount.Outline = true
+    d.amount.OutlineColor = Color3.fromRGB(0, 0, 0)
+    d.amount.Center = true
+    d.amount.Size = 13
+    d.amount.Color = Color3.fromRGB(200, 200, 200)
+    d.amount.Visible = false
+
+    d.highlight = Instance.new('Highlight')
+    d.highlight.Name = 'ItemESP_Highlight'
+    d.highlight.FillColor = color
+    d.highlight.FillTransparency = 0.5
+    d.highlight.OutlineColor = color
+    d.highlight.OutlineTransparency = 0.1
+    d.highlight.Adornee = item
+    d.highlight.Enabled = false
+    d.highlight.Parent = item
+
+    itemESP_data[item] = d
+end
+
+local function itemESPRescan()
+    if not RootPart or not RootPart.Parent then
+        RootPart = Client.Character and Client.Character:FindFirstChild('HumanoidRootPart')
+    end
+
+    if not RootPart then
+        return
+    end
+
+    local found = {}
+
+    for _, item in ipairs(Dropped:GetChildren()) do
+        if item:IsA('Model') and item:FindFirstChild('PickUpZone') and not item:GetAttribute('Locked') then
+            local ok, pos = pcall(function()
+                return item.PickUpZone.Position
+            end)
+
+            if ok and pos then
+                table.insert(found, { item = item, dist = (pos - RootPart.Position).Magnitude })
+            end
+        end
+    end
+
+    table.sort(found, function(a, b)
+        return a.dist < b.dist
+    end)
+
+    local keep = {}
+
+    for i = 1, math.min(ITEM_ESP_MAX, #found) do
+        local item = found[i].item
+
+        keep[item] = true
+        itemESPCreate(item)
+    end
+
+    for item in pairs(itemESP_data) do
+        if not keep[item] then
+            itemESPDestroy(item)
+        end
+    end
+end
+
+-- Refresco de la lista de items cada 12 segundos
+task.spawn(function()
+    while task.wait(ITEM_ESP_REFRESH) do
+        if _G.ItemESPEnabled then
+            pcall(itemESPRescan)
+        end
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    if not _G.ItemESPEnabled then
+        for _, d in pairs(itemESP_data) do
+            d.circle.Visible = false
+            d.innerCircle.Visible = false
+            d.name.Visible = false
+            d.amount.Visible = false
+
+            if d.highlight then
+                d.highlight.Enabled = false
+            end
+        end
+
+        return
+    end
+
+    for item in pairs(itemESP_data) do
+        if not item.Parent then
+            itemESPDestroy(item)
+        end
+    end
+
+    if not RootPart or not RootPart.Parent then
+        return
+    end
+
+    for item, d in pairs(itemESP_data) do
+        local zone = item:FindFirstChild('PickUpZone')
+
+        if not zone then
+            d.circle.Visible = false
+            d.innerCircle.Visible = false
+            d.name.Visible = false
+            d.amount.Visible = false
+
+            if d.highlight then
+                d.highlight.Enabled = false
+            end
+        else
+            local pos, onScreen = Camera:WorldToViewportPoint(zone.Position)
+
+            if onScreen then
+                local color = getItemRarityColor(item.Name)
+                local radius = math.clamp(100 / math.max(pos.Z, 1), 3, 6)
+
+                if d.highlight then
+                    d.highlight.FillColor = color
+                    d.highlight.OutlineColor = color
+                    d.highlight.Enabled = true
+                end
+
+                d.circle.Position = Vector2.new(pos.X, pos.Y)
+                d.circle.Radius = radius + 5
+                d.circle.Color = color
+                d.circle.Visible = true
+
+                d.innerCircle.Position = Vector2.new(pos.X, pos.Y)
+                d.innerCircle.Radius = radius
+                d.innerCircle.Color = color
+                d.innerCircle.Visible = true
+
+                d.name.Color = color
+                d.name.Position = Vector2.new(pos.X, pos.Y - radius - 20)
+                d.name.Text = item.Name
+                d.name.Visible = true
+
+                local amount = tonumber(item:GetAttribute('Amount')) or 1
+
+                d.amount.Position = Vector2.new(pos.X, pos.Y + radius + 15)
+                d.amount.Text = amount > 1 and ('[' .. tostring(amount) .. ']') or ''
+                d.amount.Visible = amount > 1
+            else
+                d.circle.Visible = false
+                d.innerCircle.Visible = false
+                d.name.Visible = false
+                d.amount.Visible = false
+
+                if d.highlight then
+                    d.highlight.Enabled = false
+                end
+            end
+        end
+    end
+end)
+
+VisualTab:Toggle({
+    Title = 'Item ESP (12s)',
+    Desc = 'Circulo + nombre + cantidad de los 20 items mas cercanos',
+    Flag = 'item_esp_12s',
+    Icon = 'check',
+    Type = 'Checkbox',
+    Value = false,
+    Callback = function(state)
+        if state and not (Drawing and Drawing.new) then
+            _G.ItemESPEnabled = false
+            WindUI:Notify({
+                Title = 'Item ESP',
+                Content = 'Drawing no disponible en este ejecutor',
+                Duration = 2,
+            })
+
+            return
+        end
+
+        _G.ItemESPEnabled = state
+
+        if state then
+            itemESPRescan()
+            WindUI:Notify({
+                Title = 'Item ESP',
+                Content = 'Enabled (refresh 12s)',
+                Duration = 2,
+            })
+        else
+            itemESPClear()
+        end
+    end,
+})
+
+end
 
 local MiscTab = Window:Tab({
     Title = 'Misc',
