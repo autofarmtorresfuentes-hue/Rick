@@ -1234,32 +1234,23 @@ do
 
 -- ===========================================================
 -- Anti Aim (estilo Upside Down Animation Pack)
--- Voltea tu personaje de cabeza (los demas te ven al reves).
--- Puedes moverte y caminar normal: solo cambia la orientacion,
--- nunca la posicion ni la velocidad. Mientras saltas o estas
--- en el aire el volteo se pausa para que saltes normal.
--- Si activas el Snap (Underground), el Anti Aim se apaga solo
--- para que no se bugeen entre ellos; al quitar el Snap vuelve
--- a activarse si estaba encendido.
+-- Se pone y se quita solo cada segundo, sin parar: un segundo
+-- volteado y un segundo normal. No usa el Snap: funciona por
+-- su cuenta. Siempre puedes moverte, caminar y saltar normal.
 -- ===========================================================
 local AntiAimEnabled = false
+local AntiAimPhase = false
+local AntiAimPhaseStart = 0
+local ANTI_AIM_FLIP_SECONDS = 1
 
-_G.AntiAimActive = false
-_G.AntiAimWanted = false
-
-_G.AntiAimSetState = function(state)
-    AntiAimEnabled = state
-    _G.AntiAimActive = state
-
-    local character = Client.Character
-    local hum = character and character:FindFirstChildOfClass('Humanoid')
+local function AntiAimUpright(character)
     local hrp = character and character:FindFirstChild('HumanoidRootPart')
 
-    if hum then
-        hum.AutoRotate = not state
+    if not hrp then
+        return
     end
 
-    if not state and hrp then
+    if hrp.CFrame.UpVector.Y < 0 then
         local look = hrp.CFrame.LookVector
         local flatLook = Vector3.new(look.X, 0, look.Z)
 
@@ -1276,6 +1267,13 @@ RunService.Heartbeat:Connect(function()
         return
     end
 
+    local now = os.clock()
+
+    if now - AntiAimPhaseStart >= ANTI_AIM_FLIP_SECONDS then
+        AntiAimPhaseStart = now
+        AntiAimPhase = not AntiAimPhase
+    end
+
     local character = Client.Character
     local hrp = character and character:FindFirstChild('HumanoidRootPart')
     local hum = character and character:FindFirstChildOfClass('Humanoid')
@@ -1286,11 +1284,23 @@ RunService.Heartbeat:Connect(function()
 
     local humState = hum:GetState()
 
-    if humState == Enum.HumanoidStateType.Jumping
-        or humState == Enum.HumanoidStateType.Freefall
-        or humState == Enum.HumanoidStateType.Seated
+    if humState == Enum.HumanoidStateType.Seated
         or humState == Enum.HumanoidStateType.Climbing
         or humState == Enum.HumanoidStateType.Swimming then
+        return
+    end
+
+    -- fase normal: derecho, caminas y saltas normal
+    if not AntiAimPhase then
+        hum.AutoRotate = true
+        AntiAimUpright(character)
+
+        return
+    end
+
+    -- fase volteada: espera a que estes en el suelo para no arruinar el salto
+    if humState == Enum.HumanoidStateType.Jumping
+        or humState == Enum.HumanoidStateType.Freefall then
         return
     end
 
@@ -1311,13 +1321,26 @@ end)
 MainTab:Toggle({
     Title = 'Anti Aim',
     Flag = 'anti_aim_upside',
-    Desc = 'Te voltea de cabeza; puedes caminar normal',
+    Desc = 'Se voltea y se endereza cada segundo, sin parar',
     Icon = 'check',
     Type = 'Checkbox',
     Value = false,
     Callback = function(Value)
-        _G.AntiAimWanted = Value
-        _G.AntiAimSetState(Value)
+        AntiAimEnabled = Value
+        AntiAimPhase = false
+
+        if Value then
+            AntiAimPhaseStart = os.clock()
+        else
+            local character = Client.Character
+            local hum = character and character:FindFirstChildOfClass('Humanoid')
+
+            if hum then
+                hum.AutoRotate = true
+            end
+
+            AntiAimUpright(character)
+        end
     end,
 })
 
@@ -1716,26 +1739,6 @@ local function SetSnapState(value)
         end
     else
         SnapThread = nil
-    end
-
-    if value then
-        if _G.AntiAimSetState and _G.AntiAimActive then
-            _G.AntiAimSetState(false)
-
-            pcall(function()
-                MainTab:Get('anti_aim_upside'):SetValue(false)
-            end)
-
-            _G.AntiAimWanted = true
-        end
-    else
-        if _G.AntiAimSetState and _G.AntiAimWanted then
-            _G.AntiAimWanted = false
-
-            pcall(function()
-                MainTab:Get('anti_aim_upside'):SetValue(true)
-            end)
-        end
     end
 
     MainTab:Get('UndergroundToggle'):SetValue(value)
