@@ -844,12 +844,11 @@ end)
 do
 
 -- ===========================================================
--- Jump Infinito + altura de salto ajustable (40 por defecto)
--- Salta de nuevo mientras estas en el aire y el salto alcanza
--- la altura indicada.
+-- Jump Infinito: salta de nuevo mientras estas en el aire.
+-- Altura de salto fija: 20 studs (no ajustable).
 -- ===========================================================
 local EnabledInfiniteJump = false
-local InfiniteJumpHeight = 40
+local InfiniteJumpHeight = 20
 
 local function InfiniteJumpApply()
     local character = Client.Character
@@ -868,7 +867,7 @@ end
 
 MainTab:Toggle({
     Title = 'Jump Infinito',
-    Desc = 'Salta de nuevo mientras estas en el aire',
+    Desc = 'Salta de nuevo en el aire; salto de 20 de altura',
     Flag = 'jump_infinito',
     Icon = 'check',
     Type = 'Checkbox',
@@ -876,24 +875,6 @@ MainTab:Toggle({
     Callback = function(Value)
         EnabledInfiniteJump = Value
         InfiniteJumpApply()
-    end,
-})
-
-MainTab:Slider({
-    Title = 'Altura de Salto',
-    Desc = 'Altura del salto con el Jump Infinito',
-    Step = 1,
-    Value = {
-        Min = 1,
-        Max = 200,
-        Default = 40,
-    },
-    Callback = function(value)
-        InfiniteJumpHeight = value
-
-        if EnabledInfiniteJump then
-            InfiniteJumpApply()
-        end
     end,
 })
 
@@ -1249,6 +1230,99 @@ MainTab:Toggle({
         end
     end,
 })
+do
+
+-- ===========================================================
+-- Anti Aim (estilo Upside Down Animation Pack)
+-- Voltea tu personaje de cabeza (los demas te ven al reves).
+-- Puedes moverte y caminar normal: solo cambia la orientacion,
+-- nunca la posicion ni la velocidad. Mientras saltas o estas
+-- en el aire el volteo se pausa para que saltes normal.
+-- Si activas el Snap (Underground), el Anti Aim se apaga solo
+-- para que no se bugeen entre ellos; al quitar el Snap vuelve
+-- a activarse si estaba encendido.
+-- ===========================================================
+local AntiAimEnabled = false
+
+_G.AntiAimActive = false
+_G.AntiAimWanted = false
+
+_G.AntiAimSetState = function(state)
+    AntiAimEnabled = state
+    _G.AntiAimActive = state
+
+    local character = Client.Character
+    local hum = character and character:FindFirstChildOfClass('Humanoid')
+    local hrp = character and character:FindFirstChild('HumanoidRootPart')
+
+    if hum then
+        hum.AutoRotate = not state
+    end
+
+    if not state and hrp then
+        local look = hrp.CFrame.LookVector
+        local flatLook = Vector3.new(look.X, 0, look.Z)
+
+        if flatLook.Magnitude < 0.05 then
+            flatLook = Vector3.new(0, 0, -1)
+        end
+
+        hrp.CFrame = CFrame.new(hrp.Position) * CFrame.lookAt(Vector3.zero, flatLook.Unit)
+    end
+end
+
+RunService.Heartbeat:Connect(function()
+    if not AntiAimEnabled then
+        return
+    end
+
+    local character = Client.Character
+    local hrp = character and character:FindFirstChild('HumanoidRootPart')
+    local hum = character and character:FindFirstChildOfClass('Humanoid')
+
+    if not hrp or not hum then
+        return
+    end
+
+    local humState = hum:GetState()
+
+    if humState == Enum.HumanoidStateType.Jumping
+        or humState == Enum.HumanoidStateType.Freefall
+        or humState == Enum.HumanoidStateType.Seated
+        or humState == Enum.HumanoidStateType.Climbing
+        or humState == Enum.HumanoidStateType.Swimming then
+        return
+    end
+
+    hum.AutoRotate = false
+
+    local look = hrp.CFrame.LookVector
+    local flatLook = Vector3.new(look.X, 0, look.Z)
+
+    if flatLook.Magnitude < 0.05 then
+        flatLook = Vector3.new(0, 0, -1)
+    end
+
+    flatLook = flatLook.Unit
+
+    hrp.CFrame = CFrame.new(hrp.Position) * CFrame.lookAt(Vector3.zero, flatLook) * CFrame.Angles(0, 0, math.pi)
+end)
+
+MainTab:Toggle({
+    Title = 'Anti Aim',
+    Flag = 'anti_aim_upside',
+    Desc = 'Te voltea de cabeza; puedes caminar normal',
+    Icon = 'check',
+    Type = 'Checkbox',
+    Value = false,
+    Callback = function(Value)
+        _G.AntiAimWanted = Value
+        _G.AntiAimSetState(Value)
+    end,
+})
+
+end
+
 MainTab:Toggle({
     Title = 'Hide Name',
     Flag = 'HideName',
@@ -1595,7 +1669,7 @@ MainTab:Divider()
 
 local EnabledSnapRunning = false
 local SnapThread = nil
-local YoffsetValue = 3
+local YoffsetValue = 5
 
 func.EnabledSnap = function()
     local basePosition = RootPart.Position
@@ -1644,6 +1718,26 @@ local function SetSnapState(value)
         SnapThread = nil
     end
 
+    if value then
+        if _G.AntiAimSetState and _G.AntiAimActive then
+            _G.AntiAimSetState(false)
+
+            pcall(function()
+                MainTab:Get('anti_aim_upside'):SetValue(false)
+            end)
+
+            _G.AntiAimWanted = true
+        end
+    else
+        if _G.AntiAimSetState and _G.AntiAimWanted then
+            _G.AntiAimWanted = false
+
+            pcall(function()
+                MainTab:Get('anti_aim_upside'):SetValue(true)
+            end)
+        end
+    end
+
     MainTab:Get('UndergroundToggle'):SetValue(value)
 end
 
@@ -1672,7 +1766,7 @@ MainTab:Slider({
     Value = {
         Min = 1,
         Max = 100,
-        Default = 3,
+        Default = 5,
     },
     Callback = function(value)
         YoffsetValue = value
@@ -2978,10 +3072,6 @@ task.spawn(function()
     end
 end)
 
-CombatTab:Section({
-    Title = 'PROMETHEUS:',
-})
-
 CombatTab:Toggle({
     Title = 'Auto Attack',
     Desc = 'Golpea al jugador mas cercano con tu arma melee',
@@ -3004,85 +3094,6 @@ CombatTab:Toggle({
     Callback = function(state)
         PromeMeleeAuraEnabled = state
         PromeMeleeAuraApply()
-    end,
-})
-
-end
-
-do
-
--- ===========================================================
--- Anti Aim (estilo Upside Down Animation Pack)
--- Voltea tu personaje de cabeza (los demas te ven al reves).
--- Mientras saltas o estas en el aire el volteo se pausa para
--- que saltes normal.
--- ===========================================================
-local AntiAimEnabled = false
-
-RunService.Heartbeat:Connect(function()
-    if not AntiAimEnabled then
-        return
-    end
-
-    local character = Client.Character
-    local hrp = character and character:FindFirstChild('HumanoidRootPart')
-    local hum = character and character:FindFirstChildOfClass('Humanoid')
-
-    if not hrp or not hum then
-        return
-    end
-
-    local humState = hum:GetState()
-
-    if humState == Enum.HumanoidStateType.Jumping
-        or humState == Enum.HumanoidStateType.Freefall
-        or humState == Enum.HumanoidStateType.Seated
-        or humState == Enum.HumanoidStateType.Climbing
-        or humState == Enum.HumanoidStateType.Swimming then
-        return
-    end
-
-    local look = hrp.CFrame.LookVector
-    local flatLook = Vector3.new(look.X, 0, look.Z)
-
-    if flatLook.Magnitude < 0.05 then
-        flatLook = Vector3.new(0, 0, -1)
-    end
-
-    flatLook = flatLook.Unit
-
-    hrp.CFrame = CFrame.new(hrp.Position) * CFrame.lookAt(Vector3.zero, flatLook) * CFrame.Angles(0, 0, math.pi)
-end)
-
-CombatTab:Section({
-    Title = 'Anti Aim:',
-})
-
-CombatTab:Toggle({
-    Title = 'Anti Aim (Upside Down)',
-    Desc = 'Te voltea de cabeza; al saltar saltas normal',
-    Flag = 'anti_aim_upside',
-    Icon = 'check',
-    Type = 'Checkbox',
-    Default = false,
-    Callback = function(state)
-        AntiAimEnabled = state
-
-        if not state then
-            local character = Client.Character
-            local hrp = character and character:FindFirstChild('HumanoidRootPart')
-
-            if hrp then
-                local look = hrp.CFrame.LookVector
-                local flatLook = Vector3.new(look.X, 0, look.Z)
-
-                if flatLook.Magnitude < 0.05 then
-                    flatLook = Vector3.new(0, 0, -1)
-                end
-
-                hrp.CFrame = CFrame.new(hrp.Position) * CFrame.lookAt(Vector3.zero, flatLook.Unit)
-            end
-        end
     end,
 })
 
