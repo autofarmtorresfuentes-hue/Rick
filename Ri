@@ -841,6 +841,85 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
+do
+
+-- ===========================================================
+-- Jump Infinito + altura de salto ajustable (40 por defecto)
+-- Salta de nuevo mientras estas en el aire y el salto alcanza
+-- la altura indicada.
+-- ===========================================================
+local EnabledInfiniteJump = false
+local InfiniteJumpHeight = 40
+
+local function InfiniteJumpApply()
+    local character = Client.Character
+    local hum = character and character:FindFirstChildOfClass('Humanoid')
+
+    if hum then
+        hum.UseJumpPower = true
+
+        if EnabledInfiniteJump then
+            hum.JumpPower = math.sqrt(2 * workspace.Gravity * InfiniteJumpHeight)
+        else
+            hum.JumpPower = 50
+        end
+    end
+end
+
+MainTab:Toggle({
+    Title = 'Jump Infinito',
+    Desc = 'Salta de nuevo mientras estas en el aire',
+    Flag = 'jump_infinito',
+    Icon = 'check',
+    Type = 'Checkbox',
+    Value = false,
+    Callback = function(Value)
+        EnabledInfiniteJump = Value
+        InfiniteJumpApply()
+    end,
+})
+
+MainTab:Slider({
+    Title = 'Altura de Salto',
+    Desc = 'Altura del salto con el Jump Infinito',
+    Step = 1,
+    Value = {
+        Min = 1,
+        Max = 200,
+        Default = 40,
+    },
+    Callback = function(value)
+        InfiniteJumpHeight = value
+
+        if EnabledInfiniteJump then
+            InfiniteJumpApply()
+        end
+    end,
+})
+
+UserInputService.JumpRequest:Connect(function()
+    if not EnabledInfiniteJump then
+        return
+    end
+
+    local character = Client.Character
+    local hum = character and character:FindFirstChildOfClass('Humanoid')
+
+    if hum and hum:GetState() == Enum.HumanoidStateType.Freefall then
+        hum:ChangeState(Enum.HumanoidStateType.Jumping)
+    end
+end)
+
+Client.CharacterAdded:Connect(function()
+    task.wait(1)
+
+    if EnabledInfiniteJump then
+        InfiniteJumpApply()
+    end
+end)
+
+end
+
 local EnabledInfiniteStamina = false
 
 MainTab:Toggle({
@@ -1516,7 +1595,7 @@ MainTab:Divider()
 
 local EnabledSnapRunning = false
 local SnapThread = nil
-local YoffsetValue = 70
+local YoffsetValue = 3
 
 func.EnabledSnap = function()
     local basePosition = RootPart.Position
@@ -1536,9 +1615,17 @@ func.EnabledSnap = function()
         if _G.SnapMode == 'up' then
             targetY = basePosition.Y + YoffsetValue
         end
-        local deltaY = targetY - currentY
 
-        RootPart.CFrame = RootPart.CFrame * CFrame.new(0, deltaY, 0)
+        local snapHumanoid = RootPart.Parent and RootPart.Parent:FindFirstChildOfClass('Humanoid')
+        local snapState = snapHumanoid and snapHumanoid:GetState() or nil
+
+        if snapState == Enum.HumanoidStateType.Jumping or snapState == Enum.HumanoidStateType.Freefall then
+            -- mientras saltas el snap se pausa y saltas normal
+        else
+            local deltaY = targetY - currentY
+
+            RootPart.CFrame = RootPart.CFrame * CFrame.new(0, deltaY, 0)
+        end
     end
 end
 
@@ -1585,7 +1672,7 @@ MainTab:Slider({
     Value = {
         Min = 1,
         Max = 100,
-        Default = 10,
+        Default = 3,
     },
     Callback = function(value)
         YoffsetValue = value
@@ -2917,6 +3004,85 @@ CombatTab:Toggle({
     Callback = function(state)
         PromeMeleeAuraEnabled = state
         PromeMeleeAuraApply()
+    end,
+})
+
+end
+
+do
+
+-- ===========================================================
+-- Anti Aim (estilo Upside Down Animation Pack)
+-- Voltea tu personaje de cabeza (los demas te ven al reves).
+-- Mientras saltas o estas en el aire el volteo se pausa para
+-- que saltes normal.
+-- ===========================================================
+local AntiAimEnabled = false
+
+RunService.Heartbeat:Connect(function()
+    if not AntiAimEnabled then
+        return
+    end
+
+    local character = Client.Character
+    local hrp = character and character:FindFirstChild('HumanoidRootPart')
+    local hum = character and character:FindFirstChildOfClass('Humanoid')
+
+    if not hrp or not hum then
+        return
+    end
+
+    local humState = hum:GetState()
+
+    if humState == Enum.HumanoidStateType.Jumping
+        or humState == Enum.HumanoidStateType.Freefall
+        or humState == Enum.HumanoidStateType.Seated
+        or humState == Enum.HumanoidStateType.Climbing
+        or humState == Enum.HumanoidStateType.Swimming then
+        return
+    end
+
+    local look = hrp.CFrame.LookVector
+    local flatLook = Vector3.new(look.X, 0, look.Z)
+
+    if flatLook.Magnitude < 0.05 then
+        flatLook = Vector3.new(0, 0, -1)
+    end
+
+    flatLook = flatLook.Unit
+
+    hrp.CFrame = CFrame.new(hrp.Position) * CFrame.lookAt(Vector3.zero, flatLook) * CFrame.Angles(0, 0, math.pi)
+end)
+
+CombatTab:Section({
+    Title = 'Anti Aim:',
+})
+
+CombatTab:Toggle({
+    Title = 'Anti Aim (Upside Down)',
+    Desc = 'Te voltea de cabeza; al saltar saltas normal',
+    Flag = 'anti_aim_upside',
+    Icon = 'check',
+    Type = 'Checkbox',
+    Default = false,
+    Callback = function(state)
+        AntiAimEnabled = state
+
+        if not state then
+            local character = Client.Character
+            local hrp = character and character:FindFirstChild('HumanoidRootPart')
+
+            if hrp then
+                local look = hrp.CFrame.LookVector
+                local flatLook = Vector3.new(look.X, 0, look.Z)
+
+                if flatLook.Magnitude < 0.05 then
+                    flatLook = Vector3.new(0, 0, -1)
+                end
+
+                hrp.CFrame = CFrame.new(hrp.Position) * CFrame.lookAt(Vector3.zero, flatLook.Unit)
+            end
+        end
     end,
 })
 
