@@ -1234,31 +1234,50 @@ do
 
 -- ===========================================================
 -- Anti Aim (estilo Upside Down Animation Pack)
--- Se pone y se quita solo cada segundo, sin parar: un segundo
--- volteado y un segundo normal. No usa el Snap: funciona por
--- su cuenta. Siempre puedes moverte, caminar y saltar normal.
+-- Solo el personaje se voltea: es un cambio visual (RootJoint),
+-- no toca la fisica. Caminas, saltas, miras y controlas todo
+-- como normalmente, con tus animaciones originales.
+-- Se pone y se quita cada segundo, sin parar. No usa el Snap.
 -- ===========================================================
 local AntiAimEnabled = false
 local AntiAimPhase = false
 local AntiAimPhaseStart = 0
 local ANTI_AIM_FLIP_SECONDS = 1
 
-local function AntiAimUpright(character)
+local AntiAimJoint = nil
+local AntiAimJointC0 = nil
+
+local function AntiAimGetJoint(character)
     local hrp = character and character:FindFirstChild('HumanoidRootPart')
 
     if not hrp then
+        AntiAimJoint = nil
+        AntiAimJointC0 = nil
+
+        return nil
+    end
+
+    if AntiAimJoint and AntiAimJoint.Parent == hrp then
+        return AntiAimJoint
+    end
+
+    AntiAimJoint = hrp:FindFirstChild('RootJoint')
+    AntiAimJointC0 = AntiAimJoint and AntiAimJoint.C0
+
+    return AntiAimJoint
+end
+
+local function AntiAimSetFlip(flip)
+    local joint = AntiAimGetJoint(Client.Character)
+
+    if not joint or not AntiAimJointC0 then
         return
     end
 
-    if hrp.CFrame.UpVector.Y < 0 then
-        local look = hrp.CFrame.LookVector
-        local flatLook = Vector3.new(look.X, 0, look.Z)
-
-        if flatLook.Magnitude < 0.05 then
-            flatLook = Vector3.new(0, 0, -1)
-        end
-
-        hrp.CFrame = CFrame.new(hrp.Position) * CFrame.lookAt(Vector3.zero, flatLook.Unit)
+    if flip then
+        joint.C0 = AntiAimJointC0 * CFrame.Angles(0, 0, math.pi)
+    else
+        joint.C0 = AntiAimJointC0
     end
 end
 
@@ -1274,54 +1293,13 @@ RunService.Heartbeat:Connect(function()
         AntiAimPhase = not AntiAimPhase
     end
 
-    local character = Client.Character
-    local hrp = character and character:FindFirstChild('HumanoidRootPart')
-    local hum = character and character:FindFirstChildOfClass('Humanoid')
-
-    if not hrp or not hum then
-        return
-    end
-
-    local humState = hum:GetState()
-
-    if humState == Enum.HumanoidStateType.Seated
-        or humState == Enum.HumanoidStateType.Climbing
-        or humState == Enum.HumanoidStateType.Swimming then
-        return
-    end
-
-    -- fase normal: derecho, caminas y saltas normal
-    if not AntiAimPhase then
-        hum.AutoRotate = true
-        AntiAimUpright(character)
-
-        return
-    end
-
-    -- fase volteada: espera a que estes en el suelo para no arruinar el salto
-    if humState == Enum.HumanoidStateType.Jumping
-        or humState == Enum.HumanoidStateType.Freefall then
-        return
-    end
-
-    hum.AutoRotate = false
-
-    local look = hrp.CFrame.LookVector
-    local flatLook = Vector3.new(look.X, 0, look.Z)
-
-    if flatLook.Magnitude < 0.05 then
-        flatLook = Vector3.new(0, 0, -1)
-    end
-
-    flatLook = flatLook.Unit
-
-    hrp.CFrame = CFrame.new(hrp.Position) * CFrame.lookAt(Vector3.zero, flatLook) * CFrame.Angles(0, 0, math.pi)
+    AntiAimSetFlip(AntiAimPhase)
 end)
 
 MainTab:Toggle({
     Title = 'Anti Aim',
     Flag = 'anti_aim_upside',
-    Desc = 'Se voltea y se endereza cada segundo, sin parar',
+    Desc = 'Solo se voltea el personaje; controlas todo normal',
     Icon = 'check',
     Type = 'Checkbox',
     Value = false,
@@ -1332,14 +1310,7 @@ MainTab:Toggle({
         if Value then
             AntiAimPhaseStart = os.clock()
         else
-            local character = Client.Character
-            local hum = character and character:FindFirstChildOfClass('Humanoid')
-
-            if hum then
-                hum.AutoRotate = true
-            end
-
-            AntiAimUpright(character)
+            AntiAimSetFlip(false)
         end
     end,
 })
