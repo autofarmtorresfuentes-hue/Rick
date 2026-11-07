@@ -666,8 +666,7 @@ local Window = WindUI:CreateWindow({
     OpenButton = {
         Title = "Montana V2 Gratis",
         Icon = ICON_URL,
-        OnlyIcon = true,
-        Scale = 1.4,
+        OnlyIcon = false,
         CornerRadius = UDim.new(0, 0),
         StrokeThickness = 3,
         Color = ColorSequence.new(Color3.fromHex('#ff1128'), Color3.fromHex('#8a0d1a')),
@@ -727,42 +726,33 @@ local Players = game:GetService('Players')
 local Player = Players.LocalPlayer
 local ReplicatedStorage = game:GetService('ReplicatedStorage')
 local Net = require(ReplicatedStorage:WaitForChild('Modules'):WaitForChild('Core'):WaitForChild('Net'))
+-- Walk Speed estilo BB Hub: impulso por frame en la direccion del
+-- movimiento (no toca el WalkSpeed del humanoid, va mas suave)
 local Character = Player.Character or Player.CharacterAdded:Wait()
 local Humanoid = Character:WaitForChild('Humanoid')
-local SpeedAmount = 35
-local EnabledSpeed = false
 
+-- c() se queda porque otros features leen y guardan campos en ella
 local function c()
-    return {
-        SpeedModifies = EnabledSpeed,
-        SpeedAmount = SpeedAmount,
-    }
-end
-local function SpeedLoop()
-    task.spawn(function()
-        while task.wait(0.1) do
-            if Humanoid and Humanoid.Parent then
-                if c().SpeedModifies then
-                    pcall(function()
-                        Net.send('set_sprinting_1', true)
-                        SprintModule.sprinting.set(true)
-                        Humanoid:SetAttribute('TargetWalkSpeed', c().SpeedAmount)
-
-                        Humanoid.WalkSpeed = c().SpeedAmount
-                    end)
-                else
-                    pcall(function()
-                        Humanoid:SetAttribute('TargetWalkSpeed', 8)
-
-                        Humanoid.WalkSpeed = 8
-                    end)
-                end
-            end
-        end
-    end)
+    return {}
 end
 
-SpeedLoop()
+local BbSpeedOn = false
+local BbSpeedMult = 2
+
+RunService.RenderStepped:Connect(function()
+    if not BbSpeedOn then
+        return
+    end
+
+    local char = Client.Character
+    local hum = char and char:FindFirstChildOfClass('Humanoid')
+    local root = char and char:FindFirstChild('HumanoidRootPart')
+
+    if hum and hum.Health > 0 and root and root.Parent and hum.MoveDirection.Magnitude > 0 then
+        root.CFrame = root.CFrame + hum.MoveDirection.Unit * (BbSpeedMult * 0.05)
+    end
+end)
+
 MainTab:Toggle({
     Title = 'Walk Speed',
     Flag = 'Walk Speed',
@@ -770,26 +760,23 @@ MainTab:Toggle({
     Type = 'Checkbox',
     Value = false,
     Callback = function(Value)
-        EnabledSpeed = Value
+        BbSpeedOn = Value
     end,
 })
 MainTab:Slider({
-    Title = 'Speed Value',
+    Title = 'Speed Multiplier',
     Flag = 'speed_value',
-    Step = 1,
+    Step = 0.5,
     Value = {
-        Min = 8,
-        Max = 45,
-        Default = SpeedAmount,
+        Min = 1,
+        Max = 5,
+        Default = 2,
     },
     Callback = function(Value)
-        SpeedAmount = Value
-
-        if Humanoid and EnabledSpeed then
-            Humanoid.WalkSpeed = Value
-        end
+        BbSpeedMult = tonumber(Value) or 2
     end,
 })
+
 Player.CharacterAdded:Connect(function(char)
     Character = char
     Humanoid = char:WaitForChild('Humanoid')
@@ -901,7 +888,19 @@ end)
 
 end
 
-local EnabledInfiniteStamina = false
+-- Infinite Stamina estilo BB Hub: barra siempre llena y ademas manda
+-- set_sprinting al servidor cada medio segundo para no parar de correr
+local BbStaminaOn = false
+local BbStaminaOriginalUpdate = nil
+local BbStaminaSprintLoop = nil
+
+local BbNet = require(game:GetService('ReplicatedStorage').Modules.Core.Net)
+
+local function BbStaminaSend(value)
+    pcall(function()
+        BbNet.send('set_sprinting_1', value)
+    end)
+end
 
 MainTab:Toggle({
     Title = 'Infinite Stamina',
@@ -910,19 +909,53 @@ MainTab:Toggle({
     Type = 'Checkbox',
     Value = false,
     Callback = function(Value)
-        EnabledInfiniteStamina = Value
+        BbStaminaOn = Value
+
+        if Value then
+            if not BbStaminaOriginalUpdate then
+                BbStaminaOriginalUpdate = SprintBar.update
+
+                SprintBar.update = function(...)
+                    return BbStaminaOriginalUpdate(function()
+                        return 1
+                    end)
+                end
+            end
+
+            if not BbStaminaSprintLoop then
+                BbStaminaSprintLoop = task.spawn(function()
+                    while BbStaminaOn do
+                        BbStaminaSend(true)
+
+                        task.wait(0.5)
+
+                        if not BbStaminaOn then
+                            break
+                        end
+
+                        BbStaminaSend(false)
+
+                        task.wait(0.1)
+                    end
+                end)
+            end
+        else
+            if BbStaminaSprintLoop then
+                task.cancel(BbStaminaSprintLoop)
+
+                BbStaminaSprintLoop = nil
+            end
+
+            BbStaminaSend(false)
+
+            if BbStaminaOriginalUpdate then
+                SprintBar.update = BbStaminaOriginalUpdate
+
+                BbStaminaOriginalUpdate = nil
+            end
+        end
     end,
 })
-
-local OldUpdate = SprintBar.update
-
-SprintBar.update = function(...)
-    if EnabledInfiniteStamina then
-        return 0.9
-    else
-        return OldUpdate(...)
-    end
-end
 
 MainTab:Section({
     Title = 'Utility:',
@@ -1646,6 +1679,152 @@ MainTab:Toggle({
 })
 MainTab:Divider()
 
+do
+-- ===========================================================
+-- Underground INDEPENDIENTE del Snap:
+-- al activar baja la distancia elegida y pone una plataforma que
+-- sigue al jugador para poder caminar por debajo del mapa;
+-- al desactivar te devuelve arriba y se quita la plataforma.
+-- ===========================================================
+_G.UGActive = false
+_G.UGDistance = 25
+_G.UGBaseY = nil
+
+local UGPlatform = nil
+local UGSyncing = false
+
+local function UGEnsurePlatform()
+    if UGPlatform and UGPlatform.Parent then
+        return
+    end
+
+    UGPlatform = Instance.new('Part')
+    UGPlatform.Name = 'MontanaUGPlatform'
+    UGPlatform.Size = Vector3.new(10, 1, 10)
+    UGPlatform.Anchored = true
+    UGPlatform.CanCollide = true
+    UGPlatform.Material = Enum.Material.Neon
+    UGPlatform.Color = Color3.fromRGB(255, 100, 0)
+    UGPlatform.Transparency = 0.25
+    UGPlatform.Parent = workspace
+end
+
+local function UGTeleportTo(y)
+    local char = Client.Character
+    local root = char and char:FindFirstChild('HumanoidRootPart')
+
+    if root and root.Parent then
+        RootPart.CFrame = CFrame.new(root.Position.X, y, root.Position.Z)
+    end
+end
+
+local function UGSyncToggle()
+    if UGSyncing then
+        return
+    end
+
+    pcall(function()
+        local window = getgenv().Window
+
+        if window and window.Toggles and window.Toggles.underground_platform then
+            window.Toggles.underground_platform:SetValue(_G.UGActive)
+        end
+    end)
+end
+
+_G.UGSetEnabled = function(state)
+    if _G.UGActive == state then
+        return
+    end
+
+    _G.UGActive = state
+
+    local char = Client.Character
+    local root = char and char:FindFirstChild('HumanoidRootPart')
+
+    if state then
+        _G.UGBaseY = root and root.Position.Y or nil
+
+        if _G.UGBaseY then
+            UGTeleportTo(_G.UGBaseY - _G.UGDistance)
+        end
+
+        UGEnsurePlatform()
+    else
+        -- al desactivar te pone arriba y quita la plataforma
+        if _G.UGBaseY then
+            UGTeleportTo(_G.UGBaseY)
+        end
+
+        if UGPlatform then
+            UGPlatform:Destroy()
+
+            UGPlatform = nil
+        end
+    end
+
+    UGSyncToggle()
+end
+
+RunService.Heartbeat:Connect(function()
+    if not _G.UGActive then
+        return
+    end
+
+    local char = Client.Character
+    local root = char and char:FindFirstChild('HumanoidRootPart')
+
+    if root and root.Parent then
+        UGEnsurePlatform()
+
+        -- la plataforma sigue al jugador para poder caminar abajo
+        UGPlatform.CFrame = CFrame.new(root.Position.X, root.Position.Y - 3.5, root.Position.Z)
+    end
+end)
+
+Client.CharacterAdded:Connect(function()
+    UGPlatform = nil
+
+    if _G.UGActive then
+        task.wait(1)
+
+        if _G.UGActive then
+            UGEnsurePlatform()
+        end
+    end
+end)
+
+MainTab:Toggle({
+    Title = 'Underground',
+    Desc = 'Baja con plataforma y al apagar te sube arriba (independiente del Snap)',
+    Flag = 'underground_platform',
+    Icon = 'check',
+    Type = 'Checkbox',
+    Value = false,
+    Callback = function(Value)
+        UGSyncing = true
+
+        _G.UGSetEnabled(Value)
+
+        UGSyncing = false
+    end,
+})
+
+MainTab:Slider({
+    Title = 'Underground Distance',
+    Flag = 'underground_distance',
+    Step = 1,
+    Value = {
+        Min = 5,
+        Max = 300,
+        Default = 25,
+    },
+    Callback = function(Value)
+        _G.UGDistance = tonumber(Value) or 25
+    end,
+})
+end
+
 local EnabledSnapRunning = false
 local SnapThread = nil
 local YoffsetValue = 5
@@ -1701,7 +1880,7 @@ local function SetSnapState(value)
 end
 
 MainTab:Toggle({
-    Title = 'Underground',
+    Title = 'Snap',
     Icon = 'check',
     Type = 'Checkbox',
     Value = false,
@@ -1735,46 +1914,17 @@ MainTab:Slider({
 do
 
 -- ===========================================================
--- Widget Underground flotante (traido de PROMETHEUS)
--- Se conecta con el Underground de la pestana General:
--- el boton Activar usa el mismo SetSnapState que el toggle y la tecla G.
+-- Widget Underground flotante (version propia, separada del Snap)
+-- Activa/desactiva el Underground con plataforma: al activar baja,
+-- al desactivar te sube arriba y se quita la plataforma.
 -- ===========================================================
-_G.SnapMode = _G.SnapMode or 'down'
-_G.SnapBaseY = _G.SnapBaseY or nil
+_G.UGActive = _G.UGActive or false
+_G.UGDistance = _G.UGDistance or 25
 
-local SnapWidgetMode = _G.SnapMode
-local SnapDragging = false
-local SnapSliderDragging = false
-local UGDragStart, UGFrameStart
-local UpdateUGSlider
-
-local function SnapTeleportTo(targetY)
-    if RootPart and RootPart.Parent then
-        RootPart.CFrame = CFrame.new(RootPart.Position.X, targetY, RootPart.Position.Z)
-
-        pcall(function()
-            local sound = Instance.new('Sound')
-
-            sound.SoundId = 'rbxassetid://108156925383225'
-            sound.Volume = 1
-            sound.PlayOnRemove = true
-            sound.Parent = RootPart
-            sound:Destroy()
-        end)
-    end
-end
-
-local function SnapWidgetTargetY()
-    if not _G.SnapBaseY then
-        return nil
-    end
-
-    if SnapWidgetMode == 'up' then
-        return _G.SnapBaseY + YoffsetValue
-    end
-
-    return _G.SnapBaseY - YoffsetValue
-end
+local UGWidgetDragging = false
+local UGWidgetSliderDragging = false
+local UGWidgetDragStart, UGWidgetFrameStart
+local UGWidgetUpdateSlider
 
 local UGGui = Instance.new('ScreenGui')
 
@@ -1786,8 +1936,8 @@ UGGui.Parent = PlayerGui
 
 local UGFrame = Instance.new('Frame')
 
-UGFrame.Size = UDim2.new(0, 220, 0, 200)
-UGFrame.Position = UDim2.new(0, 12, 0.5, -80)
+UGFrame.Size = UDim2.new(0, 220, 0, 150)
+UGFrame.Position = UDim2.new(0, 12, 0.5, -75)
 UGFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
 UGFrame.BorderSizePixel = 0
 UGFrame.Active = true
@@ -1838,90 +1988,16 @@ UGTitle.Parent = UGTitleBar
 
 UGTitleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        SnapDragging = true
-        UGDragStart = input.Position
-        UGFrameStart = UGFrame.Position
+        UGWidgetDragging = true
+        UGWidgetDragStart = input.Position
+        UGWidgetFrameStart = UGFrame.Position
     end
-end)
-
-local UGDownBtn = Instance.new('TextButton')
-
-UGDownBtn.Size = UDim2.new(0.5, -10, 0, 40)
-UGDownBtn.Position = UDim2.new(0, 8, 0, 40)
-UGDownBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 0)
-UGDownBtn.BorderSizePixel = 0
-UGDownBtn.Text = '⬇  Bajar'
-UGDownBtn.Font = Enum.Font.GothamBold
-UGDownBtn.TextSize = 13
-UGDownBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-UGDownBtn.AutoButtonColor = false
-UGDownBtn.Parent = UGFrame
-
-local UGDownCorner = Instance.new('UICorner')
-
-UGDownCorner.CornerRadius = UDim.new(0, 10)
-UGDownCorner.Parent = UGDownBtn
-
-local UGUpBtn = Instance.new('TextButton')
-
-UGUpBtn.Size = UDim2.new(0.5, -10, 0, 40)
-UGUpBtn.Position = UDim2.new(0.5, 2, 0, 40)
-UGUpBtn.BackgroundColor3 = Color3.fromRGB(38, 38, 50)
-UGUpBtn.BorderSizePixel = 0
-UGUpBtn.Text = '⬆  Subir'
-UGUpBtn.Font = Enum.Font.GothamBold
-UGUpBtn.TextSize = 13
-UGUpBtn.TextColor3 = Color3.fromRGB(140, 160, 200)
-UGUpBtn.AutoButtonColor = false
-UGUpBtn.Parent = UGFrame
-
-local UGUpCorner = Instance.new('UICorner')
-
-UGUpCorner.CornerRadius = UDim.new(0, 10)
-UGUpCorner.Parent = UGUpBtn
-
-local function UGUpdateModeVisual()
-    local info = TweenInfo.new(0.12)
-
-    if SnapWidgetMode == 'down' then
-        TweenService:Create(UGDownBtn, info, { BackgroundColor3 = Color3.fromRGB(255, 100, 0) }):Play()
-        UGDownBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        TweenService:Create(UGUpBtn, info, { BackgroundColor3 = Color3.fromRGB(38, 38, 50) }):Play()
-        UGUpBtn.TextColor3 = Color3.fromRGB(140, 160, 200)
-    else
-        TweenService:Create(UGUpBtn, info, { BackgroundColor3 = Color3.fromRGB(70, 140, 255) }):Play()
-        UGUpBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        TweenService:Create(UGDownBtn, info, { BackgroundColor3 = Color3.fromRGB(38, 38, 50) }):Play()
-        UGDownBtn.TextColor3 = Color3.fromRGB(200, 140, 100)
-    end
-end
-
-local function UGApplyMode()
-    local targetY = SnapWidgetTargetY()
-
-    if EnabledSnapRunning and targetY then
-        SnapTeleportTo(targetY)
-    end
-end
-
-UGDownBtn.MouseButton1Click:Connect(function()
-    SnapWidgetMode = 'down'
-    _G.SnapMode = 'down'
-    UGUpdateModeVisual()
-    UGApplyMode()
-end)
-
-UGUpBtn.MouseButton1Click:Connect(function()
-    SnapWidgetMode = 'up'
-    _G.SnapMode = 'up'
-    UGUpdateModeVisual()
-    UGApplyMode()
 end)
 
 local UGActivateBtn = Instance.new('TextButton')
 
 UGActivateBtn.Size = UDim2.new(1, -16, 0, 36)
-UGActivateBtn.Position = UDim2.new(0, 8, 0, 88)
+UGActivateBtn.Position = UDim2.new(0, 8, 0, 42)
 UGActivateBtn.BackgroundColor3 = Color3.fromRGB(38, 38, 50)
 UGActivateBtn.BorderSizePixel = 0
 UGActivateBtn.Text = '⏻  Activar'
@@ -1939,10 +2015,10 @@ UGActivateCorner.Parent = UGActivateBtn
 local UGWasActive = false
 
 local function UGUpdateActivateVisual()
-    if EnabledSnapRunning then
+    if _G.UGActive then
         UGActivateBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 0)
         UGActivateBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        UGActivateBtn.Text = SnapWidgetMode == 'down' and '⏻  Bajando...' or '⏻  Subiendo...'
+        UGActivateBtn.Text = '⏻  Desactivar'
     else
         UGActivateBtn.BackgroundColor3 = Color3.fromRGB(38, 38, 50)
         UGActivateBtn.TextColor3 = Color3.fromRGB(180, 180, 200)
@@ -1951,26 +2027,20 @@ local function UGUpdateActivateVisual()
 end
 
 UGActivateBtn.MouseButton1Click:Connect(function()
-    SetSnapState(not EnabledSnapRunning)
-
-    if EnabledSnapRunning then
-        local targetY = SnapWidgetTargetY()
-
-        if targetY then
-            SnapTeleportTo(targetY)
-        end
+    if _G.UGSetEnabled then
+        _G.UGSetEnabled(not _G.UGActive)
     else
-        _G.SnapBaseY = nil
+        _G.UGActive = not _G.UGActive
     end
 
     UGUpdateActivateVisual()
 end)
 
--- Sincroniza el widget cuando el snap se cambia desde el menu o con la tecla G
+-- Sincroniza el boton cuando el Underground se cambia desde el menu
 task.spawn(function()
     while task.wait(0.2) do
-        if EnabledSnapRunning ~= UGWasActive then
-            UGWasActive = EnabledSnapRunning
+        if _G.UGActive ~= UGWasActive then
+            UGWasActive = _G.UGActive
             UGUpdateActivateVisual()
         end
     end
@@ -1979,9 +2049,9 @@ end)
 local UGHeightLabel = Instance.new('TextLabel')
 
 UGHeightLabel.Size = UDim2.new(1, -16, 0, 16)
-UGHeightLabel.Position = UDim2.new(0, 8, 0, 132)
+UGHeightLabel.Position = UDim2.new(0, 8, 0, 88)
 UGHeightLabel.BackgroundTransparency = 1
-UGHeightLabel.Text = 'Distancia : ' .. tostring(YoffsetValue)
+UGHeightLabel.Text = 'Distancia : ' .. tostring(_G.UGDistance)
 UGHeightLabel.Font = Enum.Font.GothamMedium
 UGHeightLabel.TextSize = 12
 UGHeightLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
@@ -1991,7 +2061,7 @@ UGHeightLabel.Parent = UGFrame
 local UGSliderBar = Instance.new('Frame')
 
 UGSliderBar.Size = UDim2.new(1, -16, 0, 22)
-UGSliderBar.Position = UDim2.new(0, 8, 0, 152)
+UGSliderBar.Position = UDim2.new(0, 8, 0, 108)
 UGSliderBar.BackgroundColor3 = Color3.fromRGB(40, 40, 54)
 UGSliderBar.BorderSizePixel = 0
 UGSliderBar.Active = true
@@ -2006,7 +2076,7 @@ local UGSliderFill = Instance.new('Frame')
 
 UGSliderFill.BackgroundColor3 = Color3.fromRGB(255, 100, 0)
 UGSliderFill.BorderSizePixel = 0
-UGSliderFill.Size = UDim2.new(math.clamp((YoffsetValue - 1) / 299, 0, 1), 0, 1, 0)
+UGSliderFill.Size = UDim2.new(math.clamp((_G.UGDistance - 5) / 295, 0, 1), 0, 1, 0)
 UGSliderFill.Parent = UGSliderBar
 
 local UGSliderFillCorner = Instance.new('UICorner')
@@ -2018,7 +2088,7 @@ local UGSliderKnob = Instance.new('Frame')
 
 UGSliderKnob.Size = UDim2.new(0, 22, 0, 22)
 UGSliderKnob.AnchorPoint = Vector2.new(0.5, 0.5)
-UGSliderKnob.Position = UDim2.new(math.clamp((YoffsetValue - 1) / 299, 0, 1), 0, 0.5, 0)
+UGSliderKnob.Position = UDim2.new(math.clamp((_G.UGDistance - 5) / 295, 0, 1), 0, 0.5, 0)
 UGSliderKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 UGSliderKnob.BorderSizePixel = 0
 UGSliderKnob.ZIndex = 3
@@ -2033,58 +2103,62 @@ local UGKnobText = Instance.new('TextLabel')
 
 UGKnobText.Size = UDim2.new(1, 0, 1, 0)
 UGKnobText.BackgroundTransparency = 1
-UGKnobText.Text = tostring(YoffsetValue)
+UGKnobText.Text = tostring(_G.UGDistance)
 UGKnobText.Font = Enum.Font.GothamBold
 UGKnobText.TextSize = 10
 UGKnobText.TextColor3 = Color3.fromRGB(50, 50, 60)
 UGKnobText.ZIndex = 4
 UGKnobText.Parent = UGSliderKnob
 
-UpdateUGSlider = function(inputPos)
+UGWidgetUpdateSlider = function(inputPos)
     local alpha = (inputPos.X - UGSliderBar.AbsolutePosition.X) / math.max(UGSliderBar.AbsoluteSize.X, 1)
 
     alpha = math.clamp(alpha, 0, 1)
 
-    local value = math.clamp(math.floor(1 + alpha * 299 + 0.5), 1, 300)
+    local value = math.clamp(math.floor(5 + alpha * 295 + 0.5), 5, 300)
 
-    YoffsetValue = value
+    _G.UGDistance = value
 
-    local fill = (value - 1) / 299
+    local fill = (value - 5) / 295
 
     UGSliderFill.Size = UDim2.new(fill, 0, 1, 0)
     UGSliderKnob.Position = UDim2.new(fill, 0, 0.5, 0)
     UGKnobText.Text = tostring(value)
     UGHeightLabel.Text = 'Distancia : ' .. tostring(value)
 
-    if EnabledSnapRunning and _G.SnapBaseY then
-        SnapTeleportTo(SnapWidgetTargetY())
-    end
+    pcall(function()
+        local window = getgenv().Window
+
+        if window and window.Toggles and window.Toggles.underground_distance then
+            window.Toggles.underground_distance:SetValue(value)
+        end
+    end)
 end
 
 UGSliderBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        SnapSliderDragging = true
-        UpdateUGSlider(input.Position)
+        UGWidgetSliderDragging = true
+        UGWidgetUpdateSlider(input.Position)
     end
 end)
 
 UserInputService.InputChanged:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        if SnapDragging then
-            local delta = input.Position - UGDragStart
+        if UGWidgetDragging then
+            local delta = input.Position - UGWidgetDragStart
 
-            UGFrame.Position = UDim2.new(UGFrameStart.X.Scale, UGFrameStart.X.Offset + delta.X, UGFrameStart.Y.Scale, UGFrameStart.Y.Offset + delta.Y)
+            UGFrame.Position = UDim2.new(UGWidgetFrameStart.X.Scale, UGWidgetFrameStart.X.Offset + delta.X, UGWidgetFrameStart.Y.Scale, UGWidgetFrameStart.Y.Offset + delta.Y)
         end
-        if SnapSliderDragging then
-            UpdateUGSlider(input.Position)
+        if UGWidgetSliderDragging then
+            UGWidgetUpdateSlider(input.Position)
         end
     end
 end)
 
 UserInputService.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        SnapDragging = false
-        SnapSliderDragging = false
+        UGWidgetDragging = false
+        UGWidgetSliderDragging = false
     end
 end)
 
@@ -2669,54 +2743,7 @@ local function GetDistanceFromRootPart(targetRoot)
     return (RootPart.Position - targetRoot.Position).Magnitude
 end
 
-func.HitAura = function()
-    while task.wait() do
-        if not c().HitAura then
-            break
-        end
 
-        for _, vx in pairs(Players:GetPlayers())do
-            if vx ~= Client and vx.Character and vx.Character:FindFirstChild('HumanoidRootPart') then
-                local targetRoot = vx.Character:FindFirstChild('HumanoidRootPart')
-                local dist = GetDistanceFromRootPart(targetRoot)
-
-                if dist < 0 then
-                    for i, v in pairs(Character:GetChildren())do
-                        if v:IsA('Tool') and v.Name == 'Fists' then
-                            local keys = {}
-
-                            for x in pairs(v:GetAttributes())do
-                                table.insert(keys, x)
-                            end
-
-                            table.sort(keys)
-                            v:SetAttribute(keys[7], 20)
-                            v:SetAttribute(keys[8], 10000)
-                            Net.send('melee_attack', v, {vx}, targetRoot.CFrame, 0)
-                            task.wait(0)
-                        end
-                    end
-                end
-            end
-        end
-    end
-end
-
-CombatTab:Toggle({
-    Title = 'Hit Aura',
-    Flag = 'hitaura',
-    Desc = 'Auto attack near player',
-    Icon = 'check',
-    Type = 'Checkbox',
-    Default = false,
-    Callback = function(state)
-        c().HitAura = state
-
-        if state then
-            task.spawn(func.HitAura)
-        end
-    end,
-})
 
 do
 
@@ -3630,246 +3657,36 @@ VisualTab:Toggle({
     Callback = function(Value) _G.ShowSkeleton = Value end,
 })
 
--- Inventory Viewer (BB Hub): iconos de las armas de cada jugador
-do
-    local BbViewerEnabled = false
-    local BbViewerGen = 0
-    local BbViewerBillboards = {}
-    local BbRarityColors = {
-        Common = Color3.fromRGB(255, 255, 255),
-        Uncommon = Color3.fromRGB(99, 255, 52),
-        Rare = Color3.fromRGB(51, 170, 255),
-        Epic = Color3.fromRGB(237, 44, 255),
-        Legendary = Color3.fromRGB(255, 150, 0),
-        Omega = Color3.fromRGB(255, 20, 51),
-    }
-    local BbWeaponCache = {}
+_G.BbInvEnable = function(state)
+    BbViewerEnabled = state
 
-    local function BbRegisterItems(folder)
-        if not folder then
-            return
-        end
-
-        for _, tool in ipairs(folder:GetChildren()) do
-            if tool:IsA('Tool') then
-                local handle = tool:FindFirstChild('Handle')
-                local displayName = tool:GetAttribute('DisplayName') or tool.Name
-                local itemId = tool:GetAttribute('ItemId') or tool:GetAttribute('Id') or tool.Name
-                local rarity = tool:GetAttribute('RarityName') or 'Common'
-                local imageId = tool:GetAttribute('ImageId') or 'rbxassetid://7072725737'
-                local key = nil
-
-                if handle then
-                    local mesh = handle:FindFirstChildOfClass('SpecialMesh')
-
-                    if mesh and mesh.MeshId ~= '' then
-                        key = mesh.MeshId .. (mesh.TextureId or '') .. '_RARITY_' .. rarity
-                    elseif handle:IsA('MeshPart') and handle.MeshId ~= '' then
-                        key = handle.MeshId .. (handle.TextureID or '') .. '_RARITY_' .. rarity
-                    end
-                end
-
-                if not key and itemId and itemId ~= '' and itemId ~= tool.Name then
-                    key = 'ITEMID_' .. itemId .. '_RARITY_' .. rarity
-                end
-
-                if not key then
-                    key = 'NAME_' .. displayName .. '_' .. tool.Name .. '_RARITY_' .. rarity
-                end
-
-                BbWeaponCache[key] = {
-                    Name = displayName,
-                    Rarity = rarity,
-                    ImageId = imageId,
-                    ToolName = tool.Name,
-                }
-            end
-        end
-    end
-
-    local function BbWeaponKey(tool)
-        local handle = tool:FindFirstChild('Handle')
-        local displayName = tool:GetAttribute('DisplayName') or tool.Name
-        local itemId = tool:GetAttribute('ItemId') or tool:GetAttribute('Id') or tool.Name
-        local rarity = tool:GetAttribute('RarityName') or 'Common'
-
-        if handle then
-            local mesh = handle:FindFirstChildOfClass('SpecialMesh')
-
-            if mesh and mesh.MeshId ~= '' then
-                return mesh.MeshId .. (mesh.TextureId or '') .. '_RARITY_' .. rarity
-            elseif handle:IsA('MeshPart') and handle.MeshId ~= '' then
-                return handle.MeshId .. (handle.TextureID or '') .. '_RARITY_' .. rarity
+    if state then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= Client and player.Character then
+                BbCreateBillboard(player)
             end
         end
 
-        if itemId and itemId ~= '' and itemId ~= tool.Name then
-            return 'ITEMID_' .. itemId .. '_RARITY_' .. rarity
-        end
+        BbViewerGen = BbViewerGen + 1
 
-        return 'NAME_' .. displayName .. '_' .. tool.Name .. '_RARITY_' .. rarity
-    end
+        local myGen = BbViewerGen
 
-    local function BbWeaponInfo(tool)
-        if not tool or not tool:IsA('Tool') then
-            return nil
-        end
+        task.spawn(function()
+            while BbViewerEnabled and myGen == BbViewerGen do
+                task.wait(0.25)
 
-        return BbWeaponCache[BbWeaponKey(tool)]
-    end
-
-    local function BbClearBillboards()
-        for _, gui in pairs(BbViewerBillboards) do
-            gui:Destroy()
-        end
-
-        BbViewerBillboards = {}
-    end
-
-    local function BbCreateBillboard(player)
-        if not BbViewerEnabled or player == Client then
-            return
-        end
-
-        local character = player.Character
-        local hrp = character and character:FindFirstChild('HumanoidRootPart')
-
-        if not character or not hrp then
-            return
-        end
-
-        if BbViewerBillboards[player] then
-            BbViewerBillboards[player]:Destroy()
-            BbViewerBillboards[player] = nil
-        end
-
-        local gui = Instance.new('BillboardGui')
-        gui.Adornee = hrp
-        gui.Size = UDim2.new(0, 90, 0, 20)
-        gui.StudsOffset = Vector3.new(0, -5, 0)
-        gui.AlwaysOnTop = true
-
-        local layout = Instance.new('UIListLayout')
-        layout.FillDirection = Enum.FillDirection.Horizontal
-        layout.SortOrder = Enum.SortOrder.LayoutOrder
-        layout.Padding = UDim.new(0, 5)
-        layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-        layout.Parent = gui
-
-        local tools = {}
-
-        for _, name in ipairs({'Backpack', 'StarterGear', 'StarterPack'}) do
-            local holder = player:FindFirstChild(name)
-
-            if holder then
-                for _, tool in ipairs(holder:GetChildren()) do
-                    if tool:IsA('Tool') and tool.Name ~= 'Fists' then
-                        table.insert(tools, tool)
-                    end
-                end
-            end
-        end
-
-        for _, tool in ipairs(character:GetChildren()) do
-            if tool:IsA('Tool') and tool.Name ~= 'Fists' then
-                table.insert(tools, tool)
-            end
-        end
-
-        for _, tool in ipairs(tools) do
-            local info = BbWeaponInfo(tool)
-
-            if info then
-                local icon = Instance.new('ImageLabel')
-                icon.Size = UDim2.new(0, 20, 0, 20)
-                icon.BackgroundTransparency = 0.1
-                icon.Image = info.ImageId
-                icon.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-                icon.LayoutOrder = #tools
-
-                local corner = Instance.new('UICorner')
-                corner.CornerRadius = UDim.new(0, 5)
-                corner.Parent = icon
-
-                local stroke = Instance.new('UIStroke')
-                stroke.Color = BbRarityColors[info.Rarity] or Color3.new(1, 1, 1)
-                stroke.Thickness = 2
-                stroke.Parent = icon
-
-                icon.Parent = gui
-            end
-        end
-
-        gui.Parent = character
-        BbViewerBillboards[player] = gui
-    end
-
-    local itemsRoot = ReplicatedStorage:FindFirstChild('Items')
-
-    if itemsRoot then
-        for _, sub in ipairs(itemsRoot:GetChildren()) do
-            BbRegisterItems(sub)
-        end
-
-        itemsRoot.ChildAdded:Connect(function(sub)
-            BbRegisterItems(sub)
-        end)
-    end
-
-    ReplicatedStorage.ChildAdded:Connect(function(child)
-        if child.Name == 'Items' then
-            for _, sub in ipairs(child:GetChildren()) do
-                BbRegisterItems(sub)
-            end
-        end
-    end)
-
-    Players.PlayerRemoving:Connect(function(player)
-        if BbViewerBillboards[player] then
-            BbViewerBillboards[player]:Destroy()
-            BbViewerBillboards[player] = nil
-        end
-    end)
-
-    VisualTab:Toggle({
-        Title = 'Inventory Viewer',
-        Desc = 'Muestra las armas de cada jugador (BB Hub)',
-        Flag = 'inventoryviewer',
-        Icon = 'check',
-        Type = 'Checkbox',
-        Default = false,
-        Callback = function(Value)
-            BbViewerEnabled = Value
-
-            if Value then
                 for _, player in ipairs(Players:GetPlayers()) do
                     if player ~= Client and player.Character then
                         BbCreateBillboard(player)
                     end
                 end
-
-                BbViewerGen = BbViewerGen + 1
-                local myGen = BbViewerGen
-
-                task.spawn(function()
-                    while BbViewerEnabled and myGen == BbViewerGen do
-                        task.wait(0.25)
-
-                        for _, player in ipairs(Players:GetPlayers()) do
-                            if player ~= Client and player.Character then
-                                BbCreateBillboard(player)
-                            end
-                        end
-                    end
-                end)
-            else
-                BbViewerGen = BbViewerGen + 1
-                BbClearBillboards()
             end
-        end,
-    })
+        end)
+    else
+        BbViewerGen = BbViewerGen + 1
+        BbClearBillboards()
+    end
 end
-
 
 local RunService = game:GetService('RunService')
 local ReplicatedStorage = game:GetService('ReplicatedStorage')
@@ -3908,7 +3725,8 @@ local function getItemRarityColor(itemName)
 end
 
 VisualTab:Toggle({
-    Title = 'Drop Item Viewer',
+    Title = 'ESP Drop',
+    Desc = 'Items del suelo + inventarios de los jugadores',
     Flag = 'dropitem_viewer',
     Icon = 'check',
     Type = 'Checkbox',
@@ -3923,6 +3741,10 @@ VisualTab:Toggle({
             if d.billboard then
                 d.billboard.Enabled = state
             end
+        end
+
+        if _G.BbInvEnable then
+            pcall(_G.BbInvEnable, state)
         end
     end,
 })
