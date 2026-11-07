@@ -1256,7 +1256,7 @@ MainTab:Toggle({
 MainTab:Toggle({
     Title = 'Montana On Top',
     Flag = 'HideName',
-    Desc = 'Pone MONTANA en rojo sobre tu cabeza, no se quita al morir',
+    Desc = 'Tu nombre pasa a ser MONTANA ON TOP en rojo, no se quita al morir',
     Icon = 'check',
     Type = 'Checkbox',
     Value = false,
@@ -1271,50 +1271,71 @@ MainTab:Toggle({
                 return
             end
 
-            local old = hrp:FindFirstChild('MontanaTopGui')
+            local bb = hrp:FindFirstChild('CharacterBillboardGui')
 
-            if old then
-                old:Destroy()
+            if not bb then
+                return
             end
 
-            local gameName = hrp:FindFirstChild('CharacterBillboardGui')
+            local nameLabel = bb:FindFirstChild('PlayerName')
 
-            if gameName then
-                gameName.Enabled = not _G.HideName
+            if nameLabel and not nameLabel:IsA('TextLabel') then
+                nameLabel = nameLabel:FindFirstChildWhichIsA('TextLabel')
+            end
+
+            if not nameLabel then
+                for _, child in ipairs(bb:GetDescendants()) do
+                    if child:IsA('TextLabel') and not child:FindFirstAncestor('LevelImage') then
+                        nameLabel = child
+
+                        break
+                    end
+                end
+            end
+
+            if not nameLabel then
+                return
+            end
+
+            if _G.MontanaTopOriginal == nil then
+                _G.MontanaTopOriginal = {
+                    Text = nameLabel.Text,
+                    Color = nameLabel.TextColor3,
+                }
             end
 
             if _G.HideName then
-                local gui = Instance.new('BillboardGui')
-                gui.Name = 'MontanaTopGui'
-                gui.Size = UDim2.new(0, 200, 0, 44)
-                gui.StudsOffset = Vector3.new(0, 2.6, 0)
-                gui.AlwaysOnTop = true
-                gui.MaxDistance = 500
-                gui.Adornee = hrp
-
-                local label = Instance.new('TextLabel')
-                label.Size = UDim2.new(1, 0, 1, 0)
-                label.BackgroundTransparency = 1
-                label.Font = Enum.Font.GothamBlack
-                label.Text = 'MONTANA'
-                label.TextScaled = true
-                label.TextColor3 = Color3.fromRGB(255, 0, 0)
-                label.TextStrokeTransparency = 0.2
-                label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-                label.Parent = gui
-
-                gui.Parent = hrp
+                nameLabel.Text = 'MONTANA ON TOP'
+                nameLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+            else
+                nameLabel.Text = _G.MontanaTopOriginal.Text
+                nameLabel.TextColor3 = _G.MontanaTopOriginal.Color
             end
         end
 
         applyTop()
 
+        -- el juego reescribe el nombre: se vuelve a poner cada segundo
+        if _G.HideName and not _G.MontanaTopLoop then
+            _G.MontanaTopLoop = true
+
+            task.spawn(function()
+                while true do
+                    task.wait(1)
+
+                    if _G.HideName then
+                        pcall(applyTop)
+                    end
+                end
+            end)
+        end
+
         if _G.HideName then
             if not _G.HideNameConn then
-                _G.HideNameConn = LocalPlayer.CharacterAdded:Connect(function(char)
+                _G.HideNameConn = LocalPlayer.CharacterAdded:Connect(function()
                     if _G.HideName then
                         task.wait(1)
-                        applyTop()
+                        pcall(applyTop)
                     end
                 end)
             end
@@ -2073,292 +2094,91 @@ local CombatTab = Window:Tab({
     Title = 'Combat',
     Icon = 'swords',
 })
-local FOVRadius = 120
-local SilentAimEnabled = false
-local ShowFOVEnabled = false
-local WallbangEnabled = false
-local CurrentTarget = nil
-local UseSmartPredict = true
-local TargetMode = 'Head'
-local VelocityThreshold = 250
-local UserInputService = game:GetService('UserInputService')
-local IsMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
-local Players = game:GetService('Players')
-local RunService = game:GetService('RunService')
-local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
-local FOVCircleSegments = {}
-local FOVCircleGui = nil
-local FOVCircleFrame = nil
-local Tracer = nil
-local TracerGui = nil
-local TracerFrame = nil
-local TargetHeadCircle = nil
-local TargetCircleGui = nil
-local TargetCircleFrame = nil
 
-if not IsMobile then
-    for i = 1, 64 do
-        local line = Drawing.new('Line')
+-- ===========================================================
+-- Silent Aim + Line Lock (Línea) portado del BB Hub
+-- ===========================================================
+task.spawn(function()
+    local UserInputService = game:GetService('UserInputService')
+    local SendRemote = game:GetService('ReplicatedStorage').Remotes.Send
 
-        line.Thickness = 2
-        line.Visible = false
+    local IsMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 
-        table.insert(FOVCircleSegments, line)
-    end
+    local SilentOn = false
+    local LineLockOn = false
+    local BbFovRadius = 120
+    local BbTarget = nil
+    local BbExcluded = { '' }
+    local BbSmoothPos = Vector3.zero
+    local BbLerpAlpha = 0.35
 
-    Tracer = Drawing.new('Line')
-    Tracer.Thickness = 1.5
-    Tracer.Color = Color3.fromRGB(124, 252, 0)
-    Tracer.Transparency = 1
-    Tracer.Visible = false
-    TargetHeadCircle = Drawing.new('Circle')
-    TargetHeadCircle.Color = Color3.fromRGB(255, 250, 250)
-    TargetHeadCircle.Thickness = 2
-    TargetHeadCircle.NumSides = 32
-    TargetHeadCircle.Filled = false
-    TargetHeadCircle.Transparency = 1
-    TargetHeadCircle.Radius = 15
-    TargetHeadCircle.Visible = false
-else
-    FOVCircleGui = Instance.new('ScreenGui')
-    FOVCircleGui.Name = 'SilentAimFOV'
-    FOVCircleGui.IgnoreGuiInset = true
-    FOVCircleGui.ResetOnSpawn = false
-    FOVCircleGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    FOVCircleGui.Parent = game:GetService('CoreGui')
-    FOVCircleFrame = Instance.new('Frame')
-    FOVCircleFrame.Name = 'Circle'
-    FOVCircleFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-    FOVCircleFrame.BackgroundTransparency = 1
-    FOVCircleFrame.Size = UDim2.new(0, FOVRadius * 2, 0, FOVRadius * 2)
-    FOVCircleFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-    FOVCircleFrame.Visible = false
-    FOVCircleFrame.Parent = FOVCircleGui
+    local BbVelHistory = {}
+    local BbVelMaxSamples = 8
 
-    local FOVStroke = Instance.new('UIStroke')
+    local BbPingHistory = {}
+    local BbPingMax = 10
 
-    FOVStroke.Thickness = 3
-    FOVStroke.Transparency = 0
-    FOVStroke.Color = Color3.fromRGB(124, 252, 0)
-    FOVStroke.Parent = FOVCircleFrame
+    local BbCircle = nil
+    local BbCircleFrame = nil
+    local BbLine = nil
+    local BbBox = nil
 
-    local FOVGradient = Instance.new('UIGradient')
+    local function BbGetSmoothedPing()
+        local ok, value = pcall(function()
+            return game:GetService('Stats').Network.ServerStatsItem['Data Ping']:GetValue()
+        end)
 
-    FOVGradient.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 0)),
-        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(0, 255, 0)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 255)),
-    })
-    FOVGradient.Parent = FOVStroke
-
-    local FOVCorner = Instance.new('UICorner')
-
-    FOVCorner.CornerRadius = UDim.new(1, 0)
-    FOVCorner.Parent = FOVCircleFrame
-    TracerGui = Instance.new('ScreenGui')
-    TracerGui.Name = 'SilentAimTracer'
-    TracerGui.IgnoreGuiInset = true
-    TracerGui.ResetOnSpawn = false
-    TracerGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    TracerGui.Parent = game:GetService('CoreGui')
-    TracerFrame = Instance.new('Frame')
-    TracerFrame.Name = 'Line'
-    TracerFrame.BackgroundColor3 = Color3.fromRGB(124, 252, 0)
-    TracerFrame.BorderSizePixel = 0
-    TracerFrame.AnchorPoint = Vector2.new(0, 0.5)
-    TracerFrame.Size = UDim2.new(0, 0, 0, 2)
-    TracerFrame.Visible = false
-    TracerFrame.Parent = TracerGui
-    TargetCircleGui = Instance.new('ScreenGui')
-    TargetCircleGui.Name = 'SilentAimTarget'
-    TargetCircleGui.IgnoreGuiInset = true
-    TargetCircleGui.ResetOnSpawn = false
-    TargetCircleGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    TargetCircleGui.Parent = game:GetService('CoreGui')
-    TargetCircleFrame = Instance.new('Frame')
-    TargetCircleFrame.Name = 'Circle'
-    TargetCircleFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-    TargetCircleFrame.BackgroundTransparency = 1
-    TargetCircleFrame.Size = UDim2.new(0, 30, 0, 30)
-    TargetCircleFrame.Visible = false
-    TargetCircleFrame.Parent = TargetCircleGui
-
-    local TargetStroke = Instance.new('UIStroke')
-
-    TargetStroke.Color = Color3.fromRGB(255, 250, 250)
-    TargetStroke.Thickness = 2
-    TargetStroke.Transparency = 0
-    TargetStroke.Parent = TargetCircleFrame
-
-    local TargetCorner = Instance.new('UICorner')
-
-    TargetCorner.CornerRadius = UDim.new(1, 0)
-    TargetCorner.Parent = TargetCircleFrame
-end
-
-local function GetCirclePoint(center, radius, angle)
-    local x = center.X + radius * math.cos(angle)
-    local y = center.Y + radius * math.sin(angle)
-
-    return Vector2.new(x, y)
-end
-
-local TargetHistory = {}
-local VelocitySpikes = {}
-
-local function updateTargetHistory(player, position, velocity)
-    if not TargetHistory[player] then
-        TargetHistory[player] = {}
-        VelocitySpikes[player] = {
-            count = 0,
-            lastSpike = 0,
-            isAntiLock = false,
-        }
-    end
-
-    table.insert(TargetHistory[player], {
-        pos = position,
-        vel = velocity,
-        time = tick(),
-    })
-
-    if #TargetHistory[player] > 8 then
-        table.remove(TargetHistory[player], 1)
-    end
-    if UseSmartPredict and #TargetHistory[player] >= 2 then
-        local current = TargetHistory[player][#TargetHistory[player] ]
-        local previous = TargetHistory[player][#TargetHistory[player] - 1]
-        local velChange = (current.vel - previous.vel).Magnitude
-
-        if velChange > VelocityThreshold then
-            VelocitySpikes[player].count = VelocitySpikes[player].count + 1
-            VelocitySpikes[player].lastSpike = tick()
-
-            if VelocitySpikes[player].count >= 3 then
-                VelocitySpikes[player].isAntiLock = true
-            end
+        if not ok or typeof(value) ~= 'number' then
+            return 0.2
         end
-        if tick() - VelocitySpikes[player].lastSpike > 3 then
-            VelocitySpikes[player].count = 0
-            VelocitySpikes[player].isAntiLock = false
+
+        table.insert(BbPingHistory, value)
+
+        if #BbPingHistory > BbPingMax then
+            table.remove(BbPingHistory, 1)
         end
+
+        local sum = 0
+
+        for _, v in ipairs(BbPingHistory) do
+            sum = sum + v
+        end
+
+        return (sum / #BbPingHistory) / 1000
     end
-end
-local function getAverageVelocity(player)
-    local history = TargetHistory[player]
 
-    if not history or #history < 2 then
-        return Vector3.zero
-    end
-    if UseSmartPredict and VelocitySpikes[player] and VelocitySpikes[player].isAntiLock then
-        local velocities = {}
-
-        for i = 2, #history do
-            local dt = history[i].time - history[i - 1].time
-
-            if dt > 0 then
-                local vel = (history[i].pos - history[i - 1].pos) / dt
-
-                table.insert(velocities, vel)
+    local function BbIsExcluded(name)
+        for _, pattern in ipairs(BbExcluded) do
+            if pattern ~= '' and string.find(string.lower(name), string.lower(pattern), 1, true) then
+                return true
             end
         end
 
-        if #velocities > 0 then
-            table.sort(velocities, function(a, b)
-                return a.Magnitude < b.Magnitude
-            end)
-
-            local midIndex = math.ceil(#velocities / 2)
-
-            return velocities[midIndex]
-        end
+        return false
     end
 
-    local totalVel = Vector3.zero
+    local function BbGetClosestTarget()
+        local closest = nil
+        local shortest = BbFovRadius
+        local camera = workspace.CurrentCamera
+        local center = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
 
-    for i = 2, #history do
-        local dt = history[i].time - history[i - 1].time
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= Client and player.Character then
+                local char = player.Character
+                local head = char:FindFirstChild('Head')
+                local hum = char:FindFirstChildOfClass('Humanoid')
 
-        if dt > 0 then
-            local vel = (history[i].pos - history[i - 1].pos) / dt
+                if head and hum and hum.Health > 0 then
+                    local pos, onScreen = camera:WorldToViewportPoint(head.Position)
 
-            totalVel = totalVel + vel
-        end
-    end
+                    if onScreen then
+                        local screenPos = Vector2.new(pos.X, pos.Y)
+                        local dist = (screenPos - center).Magnitude
 
-    return totalVel / (#history - 1)
-end
-local function getPing()
-    local stats = LocalPlayer:FindFirstChild('PlayerGui'):FindFirstChild('NetworkStats')
-
-    if stats then
-        local pingText = stats:FindFirstChild('PingLabel')
-
-        if pingText then
-            local ping = tonumber(pingText.Text:match('%d+'))
-
-            return ping and ping / 1000 or 0.2
-        end
-    end
-
-    return 0.2
-end
-local function getClosestTarget()
-    local closest = nil
-    local shortestDistance = math.huge
-    local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-
-    for _, player in ipairs(Players:GetPlayers())do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild('Head') then
-            local head = player.Character.Head
-            local hrp = player.Character:FindFirstChild('HumanoidRootPart')
-            local humanoid = player.Character:FindFirstChild('Humanoid')
-            local isInSafeZone = false
-
-            if hrp then
-                local billboardGui = hrp:FindFirstChild('CharacterBillboardGui')
-
-                if billboardGui then
-                    local playerName = billboardGui:FindFirstChild('PlayerName')
-
-                    if playerName then
-                        local levelImage = playerName:FindFirstChild('LevelImage')
-
-                        if levelImage then
-                            local frame = levelImage:FindFirstChild('Frame')
-
-                            if frame then
-                                local safeZone = frame:FindFirstChild('InSafeZone')
-
-                                if safeZone and safeZone.Visible then
-                                    isInSafeZone = true
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-
-            local isDead = humanoid and humanoid.Health <= 0
-
-            if not isInSafeZone and not isDead then
-                local pos, onScreen = Camera:WorldToViewportPoint(head.Position)
-
-                if onScreen then
-                    local screenPos = Vector2.new(pos.X, pos.Y)
-                    local distFromCenter = (screenPos - center).Magnitude
-
-                    if distFromCenter <= FOVRadius then
-                        local toTarget = (head.Position - Camera.CFrame.Position).Unit
-                        local forward = Camera.CFrame.LookVector
-                        local dot = forward:Dot(toTarget)
-
-                        if dot > 0.5 then
-                            local distance3D = (head.Position - LocalPlayer.Character.Head.Position).Magnitude
-
-                            if distance3D < shortestDistance then
-                                shortestDistance = distance3D
+                        if dist <= BbFovRadius and not BbIsExcluded(player.Name) then
+                            if dist < shortest then
+                                shortest = dist
                                 closest = player
                             end
                         end
@@ -2366,63 +2186,421 @@ local function getClosestTarget()
                 end
             end
         end
+
+        return closest
     end
 
-    return closest
-end
-local function getSmartAimPart(character)
-    if TargetMode == 'Torso' then
-        return character:FindFirstChild('HumanoidRootPart')
-    elseif TargetMode == 'Smart' then
-        local head = character:FindFirstChild('Head')
-        local hrp = character:FindFirstChild('HumanoidRootPart')
+    local function BbCalculateVelocity(player)
+        local history = BbVelHistory[player]
 
-        if head and hrp then
-            local headVel = head.AssemblyLinearVelocity or head.Velocity or Vector3.zero
-            local hrpVel = hrp.AssemblyLinearVelocity or hrp.Velocity or Vector3.zero
+        if not history or #history < 2 then
+            return Vector3.zero
+        end
 
-            if headVel.Magnitude > hrpVel.Magnitude + 50 then
-                return hrp
+        local sum = Vector3.zero
+        local count = 0
+
+        for i = 2, #history do
+            local dt = history[i].time - history[i - 1].time
+
+            if dt > 0 then
+                sum = sum + (history[i].pos - history[i - 1].pos) / dt
+                count = count + 1
             end
         end
 
-        return head
-    else
-        return character:FindFirstChild('Head')
-    end
-end
-local function predictPosition(targetPart, character)
-    local ping = getPing()
-    local hrp = character:FindFirstChild('HumanoidRootPart')
-    local player = Players:GetPlayerFromCharacter(character)
-
-    if UseSmartPredict and player and TargetHistory[player] then
-        local avgVel = getAverageVelocity(player)
-
-        if VelocitySpikes[player] and VelocitySpikes[player].isAntiLock then
-            return targetPart.Position + (avgVel * ping * 0.6)
-        else
-            return targetPart.Position + (avgVel * ping * 1.3)
+        if count == 0 then
+            return Vector3.zero
         end
-    else
-        local velocity = hrp and (hrp.AssemblyLinearVelocity or hrp.Velocity) or Vector3.zero
 
-        return targetPart.Position + (velocity * ping * 1.15)
+        return sum / count
     end
-end
 
-RunService.Heartbeat:Connect(function()
-    if CurrentTarget and CurrentTarget.Character then
-        local head = CurrentTarget.Character:FindFirstChild('Head')
-        local hrp = CurrentTarget.Character:FindFirstChild('HumanoidRootPart')
+    local function BbPredictPosition(targetPart, character)
+        if not targetPart then
+            return Vector3.zero
+        end
 
-        if head and hrp then
-            local velocity = hrp.AssemblyLinearVelocity or hrp.Velocity or Vector3.zero
+        local player = Players:GetPlayerFromCharacter(character)
 
-            updateTargetHistory(CurrentTarget, head.Position, velocity)
+        if not player then
+            return targetPart.Position
+        end
+
+        local velocity = BbCalculateVelocity(player)
+        local ping = BbGetSmoothedPing()
+
+        return targetPart.Position + velocity * ping
+    end
+
+    local function BbIsBehindWall(fromPos, toPos)
+        if not fromPos then
+            return false
+        end
+
+        local delta = toPos - fromPos
+
+        if delta.Magnitude < 1 then
+            return false
+        end
+
+        local ignore = {}
+        local myChar = Client.Character
+
+        if myChar then
+            table.insert(ignore, myChar)
+        end
+
+        if BbTarget and BbTarget.Character then
+            table.insert(ignore, BbTarget.Character)
+        end
+
+        local result = workspace:Raycast(fromPos, delta, RaycastParams.new())
+
+        if not result then
+            return false
+        end
+
+        return result.Instance and not table.find(ignore, result.Instance.Parent)
+    end
+
+    local function BbIsShotgun()
+        local char = Client.Character
+
+        if not char then
+            return false
+        end
+
+        for _, tool in ipairs(char:GetChildren()) do
+            if tool:IsA('Tool') then
+                local ammoType = tool:GetAttribute('AmmoType')
+
+                if ammoType == 'shotgun' or ammoType == 'shootgun' then
+                    return true
+                end
+            end
+        end
+
+        return false
+    end
+
+    -- historial de velocidad de cada jugador (para la prediccion)
+    RunService.Heartbeat:Connect(function()
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= Client and player.Character then
+                local char = player.Character
+                local hrp = char:FindFirstChild('HumanoidRootPart')
+                local hum = char:FindFirstChildOfClass('Humanoid')
+
+                if hrp and hum and hum.Health > 0 then
+                    BbVelHistory[player] = BbVelHistory[player] or {}
+                    table.insert(BbVelHistory[player], { time = os.clock(), pos = hrp.Position })
+
+                    if #BbVelHistory[player] > BbVelMaxSamples then
+                        table.remove(BbVelHistory[player], 1)
+                    end
+                else
+                    BbVelHistory[player] = nil
+                end
+            end
+        end
+    end)
+
+    Players.PlayerRemoving:Connect(function(player)
+        BbVelHistory[player] = nil
+    end)
+
+    -- el disparo sale hacia la cabeza del objetivo, con prediccion de
+    -- velocidad y ping; escopeta = 8 postas; tras pared no se desvia
+    local bbOldFire
+
+    bbOldFire = hookfunction(SendRemote.FireServer, function(self, ...)
+        if self ~= SendRemote then
+            return bbOldFire(self, ...)
+        end
+
+        local args = { ... }
+
+        if SilentOn and args[2] == 'shoot_gun' and BbTarget and BbTarget.Character then
+            local targetChar = BbTarget.Character
+            local head = targetChar:FindFirstChild('Head')
+            local hrp = targetChar:FindFirstChild('HumanoidRootPart')
+            local hum = targetChar:FindFirstChildOfClass('Humanoid')
+
+            if head and hrp and hum then
+                local aimPos = BbPredictPosition(head, targetChar)
+                local myHead = Client.Character and Client.Character:FindFirstChild('Head')
+                local myPos = myHead and myHead.Position or nil
+
+                if myPos then
+                    if BbIsShotgun() then
+                        args[4] = CFrame.new(myPos, aimPos)
+
+                        local pellets = {}
+
+                        for i = 1, 8 do
+                            local offset = Vector3.new(
+                                math.random(-2, 2) * 0.03,
+                                math.random(-2, 2) * 0.03,
+                                math.random(-2, 2) * 0.03
+                            )
+
+                            table.insert(pellets, {
+                                [1] = {
+                                    Instance = head,
+                                    Normal = Vector3.new(0, 1, 0),
+                                    Position = aimPos + offset,
+                                },
+                            })
+                        end
+
+                        args[5] = pellets
+                    else
+                        if BbIsBehindWall(myPos, aimPos) then
+                            args[4] = CFrame.new(math.huge, math.huge, math.huge)
+                        else
+                            args[4] = CFrame.new(myPos, aimPos)
+                        end
+
+                        args[5] = {
+                            [1] = {
+                                [1] = {
+                                    Instance = head,
+                                    Normal = Vector3.new(0, 1, 0),
+                                    Position = aimPos,
+                                },
+                            },
+                        }
+                    end
+
+                    -- linea roja del disparo (BB Hub): se pone verde si le diste
+                    local beam = nil
+
+                    pcall(function()
+                        beam = Instance.new('Part')
+                        beam.Anchored = true
+                        beam.CanCollide = false
+                        beam.Size = Vector3.new(0.08, 0.08, (aimPos - myPos).Magnitude)
+                        beam.CFrame = CFrame.new(myPos, aimPos) * CFrame.new(0, 0, -beam.Size.Z / 2)
+                        beam.Material = Enum.Material.Neon
+                        beam.Transparency = 0.35
+                        beam.Color = Color3.fromRGB(255, 0, 0)
+                        beam.Parent = workspace
+
+                        game:GetService('Debris'):AddItem(beam, 4)
+                    end)
+
+                    local healthBefore = hum.Health
+
+                    task.delay(0.1, function()
+                        if beam and hum and hum.Parent and hum.Health < healthBefore then
+                            beam.Color = Color3.fromRGB(0, 255, 0)
+                        end
+                    end)
+                end
+            end
+        end
+
+        return bbOldFire(self, unpack(args))
+    end)
+
+    -- circulo FOV + linea al objetivo + marco (Line Lock)
+    local function BbEnsureDrawings()
+        if BbCircle or BbCircleFrame then
+            return
+        end
+
+        pcall(function()
+            if IsMobile then
+                local gui = Instance.new('ScreenGui')
+                gui.Name = 'BBSilentFov'
+                gui.IgnoreGuiInset = true
+                gui.ResetOnSpawn = false
+                gui.Parent = game:GetService('CoreGui')
+
+                BbCircleFrame = Instance.new('Frame')
+                BbCircleFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+                BbCircleFrame.Position = UDim2.fromScale(0.5, 0.5)
+                BbCircleFrame.BackgroundTransparency = 1
+                BbCircleFrame.Size = UDim2.fromOffset(BbFovRadius * 2, BbFovRadius * 2)
+                BbCircleFrame.Visible = false
+
+                local stroke = Instance.new('UIStroke')
+                stroke.Color = Color3.fromRGB(255, 255, 255)
+                stroke.Thickness = 2
+                stroke.Parent = BbCircleFrame
+
+                local corner = Instance.new('UICorner')
+                corner.CornerRadius = UDim.new(1, 0)
+                corner.Parent = BbCircleFrame
+
+                BbCircleFrame.Parent = gui
+            else
+                BbCircle = Drawing.new('Circle')
+                BbCircle.Thickness = 1.5
+                BbCircle.Color = Color3.fromRGB(255, 255, 255)
+                BbCircle.NumSides = 60
+                BbCircle.Filled = false
+                BbCircle.Visible = false
+            end
+
+            BbLine = Drawing.new('Line')
+            BbLine.Thickness = 1.3
+            BbLine.Color = Color3.fromRGB(255, 50, 50)
+            BbLine.Transparency = 1
+            BbLine.Visible = false
+
+            BbBox = {}
+
+            for i = 1, 4 do
+                BbBox[i] = Drawing.new('Line')
+                BbBox[i].Color = Color3.fromRGB(255, 255, 255)
+                BbBox[i].Thickness = 1.2
+                BbBox[i].Visible = false
+            end
+        end)
+    end
+
+    local function BbHideAimVisuals()
+        if BbLine then
+            BbLine.Visible = false
+        end
+
+        if BbBox then
+            for i = 1, 4 do
+                BbBox[i].Visible = false
+            end
         end
     end
+
+    RunService.RenderStepped:Connect(function()
+        pcall(function()
+            BbTarget = (SilentOn or LineLockOn) and BbGetClosestTarget() or nil
+
+            BbEnsureDrawings()
+
+            -- circulo FOV: se re-asegura cada frame, no se quita al morir
+            if IsMobile then
+                if BbCircleFrame then
+                    BbCircleFrame.Visible = SilentOn
+                    BbCircleFrame.Size = UDim2.fromOffset(BbFovRadius * 2, BbFovRadius * 2)
+                end
+            elseif BbCircle then
+                BbCircle.Visible = SilentOn
+
+                if SilentOn then
+                    local camera = workspace.CurrentCamera
+
+                    BbCircle.Position = Vector2.new(
+                        camera.ViewportSize.X / 2,
+                        camera.ViewportSize.Y / 2
+                    )
+                    BbCircle.Radius = BbFovRadius
+                end
+            end
+
+            -- Line Lock (Línea): linea roja del centro al objetivo + marco
+            if not (BbLine and BbBox) then
+                return
+            end
+
+            if BbTarget and BbTarget.Character then
+                local char = BbTarget.Character
+                local hum = char:FindFirstChildOfClass('Humanoid')
+                local head = char:FindFirstChild('Head')
+
+                if hum and hum.Health > 0 and head then
+                    local camera = workspace.CurrentCamera
+
+                    BbSmoothPos = BbSmoothPos:Lerp(head.Position, BbLerpAlpha)
+
+                    local pos, onScreen = camera:WorldToViewportPoint(BbSmoothPos)
+
+                    if onScreen then
+                        BbLine.Visible = true
+                        BbLine.From = Vector2.new(
+                            camera.ViewportSize.X / 2,
+                            camera.ViewportSize.Y / 2
+                        )
+                        BbLine.To = Vector2.new(pos.X, pos.Y)
+
+                        local top = camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
+                        local bottom = camera:WorldToViewportPoint(head.Position - Vector3.new(0, 0.5, 0))
+                        local mid = Vector2.new(pos.X, pos.Y)
+                        local half = math.clamp((top - bottom).Magnitude / 2, 8, 25)
+
+                        BbBox[1].From, BbBox[1].To = Vector2.new(mid.X, mid.Y - half), Vector2.new(mid.X + half, mid.Y)
+                        BbBox[2].From, BbBox[2].To = Vector2.new(mid.X + half, mid.Y), Vector2.new(mid.X, mid.Y + half)
+                        BbBox[3].From, BbBox[3].To = Vector2.new(mid.X, mid.Y + half), Vector2.new(mid.X - half, mid.Y)
+                        BbBox[4].From, BbBox[4].To = Vector2.new(mid.X - half, mid.Y), Vector2.new(mid.X, mid.Y - half)
+
+                        for i = 1, 4 do
+                            BbBox[i].Visible = true
+                        end
+
+                        return
+                    end
+                end
+            end
+
+            BbHideAimVisuals()
+
+            if not BbTarget then
+                BbSmoothPos = Vector3.zero
+            end
+        end)
+    end)
+
+    CombatTab:Toggle({
+        Title = 'Silent Aim',
+        Desc = 'Dispara solo a la cabeza mas cercana (BB Hub)',
+        Flag = 'bb_silent_aim',
+        Icon = 'check',
+        Type = 'Checkbox',
+        Default = false,
+        Callback = function(state)
+            SilentOn = state
+            BbTarget = nil
+        end,
+    })
+
+    CombatTab:Toggle({
+        Title = 'Línea',
+        Desc = 'Line Lock: linea al objetivo con marco (BB Hub)',
+        Flag = 'bb_line_lock',
+        Icon = 'check',
+        Type = 'Checkbox',
+        Default = false,
+        Callback = function(state)
+            LineLockOn = state
+            BbTarget = nil
+        end,
+    })
+
+    CombatTab:Slider({
+        Title = 'FOV',
+        Flag = 'bb_fov_radius',
+        Step = 1,
+        Value = {
+            Min = 20,
+            Max = 800,
+            Default = 120,
+        },
+        Callback = function(value)
+            BbFovRadius = tonumber(value) or 120
+        end,
+    })
+
+    CombatTab:Input({
+        Title = 'Safe Friend',
+        Placeholder = 'nombre del jugador...',
+        Callback = function(value)
+            BbExcluded = { tostring(value or '') }
+        end,
+    })
 end)
+
+local Camera = workspace.CurrentCamera
 
 local FakeHead = nil
 
@@ -2475,363 +2653,13 @@ end)
 RunService.Heartbeat:Connect(function()
     UpdateFakeHead()
 end)
-RunService.RenderStepped:Connect(function()
-    local centerX = Camera.ViewportSize.X / 2
-    local centerY = Camera.ViewportSize.Y / 2
-    local center = Vector2.new(centerX, centerY)
-    local time = tick() * 2
 
-    if not IsMobile then
-        local numSegments = #FOVCircleSegments
-        local angleStep = (math.pi * 2) / numSegments
 
-        for i = 1, numSegments do
-            local line = FOVCircleSegments[i]
 
-            if SilentAimEnabled and ShowFOVEnabled then
-                local angle1 = angleStep * (i - 1)
-                local angle2 = angleStep * i
-                local point1 = GetCirclePoint(center, FOVRadius, angle1)
-                local point2 = GetCirclePoint(center, FOVRadius, angle2)
-                local hue = ((i / numSegments) + (time * 0.1)) % 1
-                local color = Color3.fromHSV(hue, 0.8, 1)
 
-                line.From = point1
-                line.To = point2
-                line.Color = color
-                line.Visible = true
-            else
-                line.Visible = false
-            end
-        end
-    else
-        if FOVCircleFrame then
-            FOVCircleFrame.Visible = SilentAimEnabled and ShowFOVEnabled
-            FOVCircleFrame.Size = UDim2.new(0, FOVRadius * 2, 0, FOVRadius * 2)
 
-            local stroke = FOVCircleFrame:FindFirstChildOfClass('UIStroke')
 
-            if stroke then
-                local gradient = stroke:FindFirstChildOfClass('UIGradient')
 
-                if gradient then
-                    local hue1 = (time * 0.1) % 1
-                    local hue2 = (time * 0.1 + 0.33) % 1
-                    local hue3 = (time * 0.1 + 0.66) % 1
-
-                    gradient.Color = ColorSequence.new({
-                        ColorSequenceKeypoint.new(0, Color3.fromHSV(hue1, 0.8, 1)),
-                        ColorSequenceKeypoint.new(0.5, Color3.fromHSV(hue2, 0.8, 1)),
-                        ColorSequenceKeypoint.new(1, Color3.fromHSV(hue3, 0.8, 1)),
-                    })
-                    gradient.Rotation = (time * 50) % 360
-                end
-            end
-        end
-    end
-    if SilentAimEnabled then
-        CurrentTarget = getClosestTarget()
-    else
-        CurrentTarget = nil
-    end
-    if CurrentTarget and CurrentTarget.Character then
-        local targetPart = getSmartAimPart(CurrentTarget.Character)
-        local myHead
-
-        if _G.AntiLock and FakeHead and FakeHead.Parent then
-            myHead = FakeHead
-        else
-            myHead = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild('Head')
-        end
-        if targetPart and myHead then
-            local myScreenPos, myOnScreen = Camera:WorldToViewportPoint(myHead.Position)
-            local targetScreenPos, targetOnScreen = Camera:WorldToViewportPoint(targetPart.Position)
-
-            if targetOnScreen then
-                if not IsMobile then
-                    Tracer.Visible = true
-                    Tracer.From = Vector2.new(myScreenPos.X, myScreenPos.Y)
-                    Tracer.To = Vector2.new(targetScreenPos.X, targetScreenPos.Y)
-                    TargetHeadCircle.Visible = true
-                    TargetHeadCircle.Position = Vector2.new(targetScreenPos.X, targetScreenPos.Y)
-                else
-                    if TracerFrame then
-                        local dx = targetScreenPos.X - myScreenPos.X
-                        local dy = targetScreenPos.Y - myScreenPos.Y
-                        local length = math.sqrt(dx * dx + dy * dy)
-                        local angle = math.deg(math.atan2(dx, dy))
-
-                        TracerFrame.Size = UDim2.new(0, length, 0, 2)
-                        TracerFrame.Position = UDim2.new(0, myScreenPos.X, 0, myScreenPos.Y)
-                        TracerFrame.Rotation = angle
-                        TracerFrame.Visible = true
-                    end
-                    if TargetCircleFrame then
-                        TargetCircleFrame.Position = UDim2.new(0, targetScreenPos.X, 0, targetScreenPos.Y)
-                        TargetCircleFrame.Visible = true
-                    end
-                end
-            else
-                if not IsMobile then
-                    Tracer.Visible = false
-                    TargetHeadCircle.Visible = false
-                else
-                    if TracerFrame then
-                        TracerFrame.Visible = false
-                    end
-                    if TargetCircleFrame then
-                        TargetCircleFrame.Visible = false
-                    end
-                end
-            end
-        end
-    else
-        if not IsMobile then
-            Tracer.Visible = false
-            TargetHeadCircle.Visible = false
-        else
-            if TracerFrame then
-                TracerFrame.Visible = false
-            end
-            if TargetCircleFrame then
-                TargetCircleFrame.Visible = false
-            end
-        end
-    end
-end)
-
-local oldFire
-
-oldFire = hookfunction(game:GetService('ReplicatedStorage').Remotes.Send.FireServer, function(self, ...)
-    local args = {...}
-
-    if SilentAimEnabled and args[2] == 'shoot_gun' and CurrentTarget and CurrentTarget.Character then
-        local targetPart = getSmartAimPart(CurrentTarget.Character)
-
-        if targetPart then
-            local aimPos = predictPosition(targetPart, CurrentTarget.Character)
-            local realHead = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild('Head')
-            local myHeadPos = realHead and realHead.Position or Camera.CFrame.Position
-
-            args[4] = CFrame.new(myHeadPos, aimPos)
-            args[4] = CFrame.new(math.huge, math.huge, math.huge)
-            args[5] = {
-                [1] = {
-                    [1] = {
-                        Instance = targetPart,
-                        Normal = Vector3.new(0, 1, 0),
-                        Position = aimPos,
-                    },
-                },
-            }
-
-            local beam = Instance.new('Part', workspace)
-
-            beam.Anchored = true
-            beam.CanCollide = false
-            beam.Size = Vector3.new(0.05, 0.05, (aimPos - myHeadPos).Magnitude)
-            beam.CFrame = CFrame.new(myHeadPos, aimPos) * CFrame.new(0, 0, -beam.Size.Z / 2)
-            beam.Color = Color3.fromRGB(255, 50, 50)
-            beam.Material = Enum.Material.Neon
-            beam.Transparency = 0.25
-
-            game:GetService('Debris'):AddItem(beam, 1.5)
-        end
-    end
-
-    return oldFire(self, unpack(args))
-end)
-
-CombatTab:Toggle({
-    Title = 'Silent Aim',
-    Flag = 'silent aim',
-    Desc = 'Auto aim to target',
-    Icon = 'check',
-    Type = 'Checkbox',
-    Default = false,
-    Callback = function(state)
-        SilentAimEnabled = state
-    end,
-})
-CombatTab:Toggle({
-    Title = 'Show FOV',
-    Flag = 'show',
-    Desc = 'Display FOV circle (no se quita al morir)',
-    Icon = 'check',
-    Type = 'Checkbox',
-    Default = false,
-    Callback = function(state)
-        ShowFOVEnabled = state
-
-        if state then
-            task.spawn(function()
-                while ShowFOVEnabled do
-                    task.wait(0.5)
-
-                    pcall(function()
-                        if FOVCircleGui and not FOVCircleGui.Parent then
-                            FOVCircleGui.Parent = game:GetService('CoreGui')
-                        end
-
-                        if FOVCircleFrame and FOVCircleFrame.Parent then
-                            FOVCircleFrame.Visible = SilentAimEnabled and ShowFOVEnabled
-                        end
-
-                        if SilentAimEnabled and ShowFOVEnabled and not IsMobile then
-                            for _, seg in ipairs(FOVCircleSegments) do
-                                pcall(function()
-                                    seg.Visible = true
-                                end)
-                            end
-                        end
-                    end)
-                end
-            end)
-        end
-    end,
-})
-do
--- Línea: dibuja una linea desde tu personaje hasta el objetivo
--- que tiene bloqueado el Silent Aim
-do
-    local LineEnabled = false
-    local LineDrawing = nil
-
-    CombatTab:Toggle({
-        Title = 'Línea',
-        Desc = 'Linea hacia el objetivo del Silent Aim',
-        Flag = 'lock_line',
-        Icon = 'check',
-        Type = 'Checkbox',
-        Default = false,
-        Callback = function(state)
-            LineEnabled = state
-
-            if not state and LineDrawing then
-                LineDrawing.Visible = false
-            end
-        end,
-    })
-
-    RunService.RenderStepped:Connect(function()
-        if not LineEnabled or not SilentAimEnabled then
-            if LineDrawing and LineDrawing.Visible then
-                LineDrawing.Visible = false
-            end
-
-            return
-        end
-
-        local character = Client.Character
-        local myHrp = character and character:FindFirstChild('HumanoidRootPart')
-        local target = CurrentTarget
-
-        if not LineDrawing then
-            local ok = pcall(function()
-                LineDrawing = Drawing.new('Line')
-            end)
-
-            if not ok or not LineDrawing then
-                return
-            end
-
-            LineDrawing.Thickness = 2
-            LineDrawing.Color = Color3.fromRGB(255, 0, 0)
-            LineDrawing.Transparency = 1
-        end
-
-        if not myHrp or not target or not target.Character then
-            LineDrawing.Visible = false
-
-            return
-        end
-
-        local camera = workspace.CurrentCamera
-        local targetChar = target.Character
-        local targetHead = targetChar:FindFirstChild('Head')
-        local targetPos = targetHead and targetHead.Position or targetChar:GetPivot().Position
-        local myPos = myHrp.Position + Vector3.new(0, 2, 0)
-        local myScreen = camera:WorldToViewportPoint(myPos)
-        local tScreen = camera:WorldToViewportPoint(targetPos)
-
-        if myScreen and tScreen and myScreen.Z > 0 and tScreen.Z > 0 then
-            LineDrawing.From = Vector2.new(myScreen.X, myScreen.Y)
-            LineDrawing.To = Vector2.new(tScreen.X, tScreen.Y)
-            LineDrawing.Visible = true
-        else
-            LineDrawing.Visible = false
-        end
-    end)
-end
-end
-
-CombatTab:Toggle({
-    Title = 'Smart Predict',
-    Flag = 'smartpredict',
-    Desc = 'Advanced velocity prediction + Anti-Lock Resolver',
-    Icon = 'check',
-    Type = 'Checkbox',
-    Default = true,
-    Callback = function(state)
-        UseSmartPredict = state
-    end,
-})
-CombatTab:Toggle({
-    Title = 'Wallbang',
-    Flag = 'wallbang',
-    Desc = 'Shoot through walls',
-    Icon = 'check',
-    Type = 'Checkbox',
-    Default = false,
-    Callback = function(state)
-        WallbangEnabled = state
-    end,
-})
-CombatTab:Dropdown({
-    Title = 'Target Mode',
-    Flag = 'target_mode',
-    Desc = 'Select aim target part',
-    Icon = 'target',
-    Values = {
-        'Head',
-        'Torso',
-        'Smart',
-    },
-    Default = 'Head',
-    Callback = function(value)
-        TargetMode = value
-    end,
-})
-CombatTab:Slider({
-    Title = 'FOV Size',
-    Flag = 'fov_size',
-    Step = 1,
-    Value = {
-        Min = 20,
-        Max = 1000,
-        Default = FOVRadius,
-    },
-    Callback = function(value)
-        FOVRadius = tonumber(value) or 120
-
-        if IsMobile and FOVCircleFrame then
-            FOVCircleFrame.Size = UDim2.new(0, FOVRadius * 2, 0, FOVRadius * 2)
-        end
-    end,
-})
-CombatTab:Slider({
-    Title = 'Velocity Threshold',
-    Flag = 'velocity_threshold',
-    Step = 10,
-    Value = {
-        Min = 100,
-        Max = 500,
-        Default = VelocityThreshold,
-    },
-    Callback = function(value)
-        VelocityThreshold = tonumber(value) or 250
-    end,
-})
 
 local function GetDistanceFromRootPart(targetRoot)
     if not targetRoot or not RootPart then
@@ -3598,16 +3426,7 @@ local function BumpAuraLoop()
     end
 end
 
-VehicleTab:Toggle({
-    Title = 'Car Guard',
-    Flag = 'CarGuard',
-    Icon = 'shield',
-    Type = 'Checkbox',
-    Value = false,
-    Callback = function(Value)
-        CarGuardEnabled = Value
-    end,
-})
+
 VehicleTab:Toggle({
     Title = 'Bump Aura',
     Flag = 'BumpAura',
@@ -3623,546 +3442,6 @@ VehicleTab:Toggle({
     end,
 })
 VehicleTab:Divider()
-
-local Storage = {
-	Vehicle_Attributes = {
-		{ Name = "acceleration", Type = "number", Min = 5, Max = 100, DisplayName = "Acceleration" },
-		{ Name = "slipThreshold", Type = "number", Min = 10, Max = 100, DisplayName = "Slip Threshold" },
-		{ Name = "staticFriction", Type = "number", Min = 1, Max = 10, DisplayName = "Static Friction" },
-	},
-}
-
-local function G_Toggle(ToggleName: string): boolean
-    local window = getgenv().Window
-    if not window then
-        print("G_Toggle: Window not found")
-        return false
-    end
-    if not window.Toggles then
-        print("G_Toggle: Window.Toggles not found")
-        return false
-    end
-    if not window.Toggles[ToggleName] then
-        print("G_Toggle: Toggle", ToggleName, "not found")
-        return false
-    end
-    local value = window.Toggles[ToggleName].Value == true
-    print("G_Toggle:", ToggleName, "=", value)
-    return value
-end
-
-local function G_Option(OptionName: string): any
-    local window = getgenv().Window
-    if not window then
-        print("G_Option: Window not found")
-        return nil
-    end
-    if not window.Options then
-        print("G_Option: Window.Options not found")
-        return nil
-    end
-    if not window.Options[OptionName] then
-        print("G_Option: Option", OptionName, "not found")
-        return nil
-    end
-    local value = window.Options[OptionName].Value
-    print("G_Option:", OptionName, "=", value)
-    return value
-end
-
-local function Sit(VehicleSeat: VehicleSeat, NYield: boolean?)
-    local Vehicle = VehicleSeat.Parent :: BasePart
-    local Prompt = Vehicle.Chassis.DrivePromptAttachment.DrivePrompt
-    local Character = LocalPlayer.Character
-
-    local Origin = Character:GetPivot()
-
-    fireproximityprompt(Prompt, 0.5)
-    if not NYield then
-        task.wait(0.5)
-        if not Character.Humanoid.SeatPart then
-
-            local AttemptNetworkOwnershipStart = os.clock()
-            while os.clock() - AttemptNetworkOwnershipStart < 0.3 and Character.Humanoid.SeatPart == nil do
-                RunService.Heartbeat:Wait()
-                Character:PivotTo(VehicleSeat:GetPivot())
-                VehicleSeat.AssemblyLinearVelocity = Vector3.yAxis * math.random() * 10
-            end
-
-            Character:PivotTo(Origin)
-            Vehicle:PivotTo(Origin)
-            VehicleSeat.AssemblyLinearVelocity = Vector3.zero
-            for _, BasePart in next, Character:GetDescendants() do
-                if BasePart:IsA("BasePart") then
-                    BasePart.AssemblyLinearVelocity = Vector3.zero
-                    BasePart.AssemblyAngularVelocity = Vector3.zero
-                end
-            end
-
-            if Character.Humanoid.SeatPart == nil then
-                return
-            else
-            end
-        else
-            Character:PivotTo(Vehicle:GetPivot())
-        end
-    end
-end
-
-local GetVehicle = function(): { Vehicle: Model?, Name: string? }?
-    local Character = LocalPlayer.Character
-    if not Character then
-        return nil
-    end
-    local Humanoid = Character:FindFirstChildOfClass("Humanoid") :: Humanoid
-    local VehicleSeat = Humanoid.SeatPart
-
-    if VehicleSeat and VehicleSeat.ClassName == "VehicleSeat" then
-        local Vehicle = VehicleSeat.Parent :: Model
-        local VehicleName = Vehicle.Name
-
-        return {
-            Vehicle = Vehicle,
-            Name = VehicleName,
-        }
-    end
-
-    return nil
-end
-
-local FindVehicle = function(): { Vehicle: Model?, Name: string? }?
-    local Vehicles = workspace:WaitForChild("Vehicles")
-    local LocalUserId = LocalPlayer.UserId
-
-    print("FindVehicle: Looking for vehicles, LocalUserId:", LocalUserId)
-    print("FindVehicle: Vehicles folder has", #Vehicles:GetChildren(), "children")
-
-    for _, Vehicle in next, Vehicles:GetChildren() do
-        local ownerId = Vehicle:GetAttribute("OwnerUserId")
-        print("FindVehicle: Found vehicle", Vehicle.Name, "with OwnerUserId:", ownerId)
-        if ownerId == LocalUserId then
-            print("FindVehicle: Found matching vehicle:", Vehicle.Name)
-            return {
-                Vehicle = Vehicle,
-                Name = Vehicle.Name,
-            }
-        end
-    end
-
-    local Character = LocalPlayer.Character
-    if Character then
-        local Humanoid = Character:FindFirstChildOfClass("Humanoid")
-        if Humanoid and Humanoid.SeatPart then
-            local Vehicle = Humanoid.SeatPart.Parent
-            print("FindVehicle: Found vehicle by seat part:", Vehicle.Name)
-            return {
-                Vehicle = Vehicle,
-                Name = Vehicle.Name,
-            }
-        end
-    end
-
-    print("FindVehicle: No matching vehicle found")
-    return nil
-end
-
-local VehicleModSystem
-VehicleModSystem = {
-	AttributeInfos = Storage.Vehicle_Attributes,
-	TorqueAttributes = { "maxSpeedTorque", "minSpeedTorque" },
-	AttributeCache = setmetatable({}, { __mode = "k" }),
-	ChassisCache = setmetatable({}, { __mode = "k" }),
-	LastVehicle = nil,
-}
-
-local function getDefaultPhysicalSnapshot(part: BasePart)
-	return {
-		hadCustom = false,
-		density = nil,
-		densityFallback = 1,
-		friction = 0.3,
-		elasticity = 0,
-		frictionWeight = 1,
-		elasticityWeight = 1,
-	}
-end
-
-function VehicleModSystem:CaptureChassisState(chassis: BasePart)
-	local current = chassis.CustomPhysicalProperties
-	if current then
-		return {
-			hadCustom = true,
-			density = current.Density,
-			friction = current.Friction,
-			elasticity = current.Elasticity,
-			frictionWeight = current.FrictionWeight,
-			elasticityWeight = current.ElasticityWeight,
-			densityFallback = current.Density,
-		}
-	end
-	return getDefaultPhysicalSnapshot(chassis)
-end
-
-function VehicleModSystem:RestoreChassisState(chassis: BasePart, cache: any)
-	if not cache then
-		return
-	end
-	if cache.hadCustom and cache.density then
-		chassis.CustomPhysicalProperties = PhysicalProperties.new(
-			cache.density,
-			cache.friction,
-			cache.elasticity,
-			cache.frictionWeight,
-			cache.elasticityWeight
-		)
-	else
-		local ok = pcall(function()
-			chassis.CustomPhysicalProperties = nil
-		end)
-		if not ok then
-			local density = cache.density or cache.densityFallback or 1
-			chassis.CustomPhysicalProperties = PhysicalProperties.new(
-				density,
-				cache.friction,
-				cache.elasticity,
-				cache.frictionWeight,
-				cache.elasticityWeight
-			)
-		end
-	end
-end
-
-local function isInstance(value: any): boolean
-	return typeof(value) == "Instance"
-end
-
-function VehicleModSystem:IsInstanceValid(instance: Instance?): boolean
-	if instance == nil then
-		return false
-	end
-	return isInstance(instance) and instance.Parent ~= nil
-end
-
-function VehicleModSystem:StoreOriginal(instance: Instance, attrName: string, value: any)
-	if not self:IsInstanceValid(instance) then
-		return
-	end
-	local cache = self.AttributeCache[instance]
-	if not cache then
-		cache = {}
-		self.AttributeCache[instance] = cache
-	end
-	if cache[attrName] == nil then
-		cache[attrName] = value
-	end
-end
-
-function VehicleModSystem:ApplyAttributeFolder(folder: Folder)
-	if not self:IsInstanceValid(folder) then
-		return
-	end
-
-	for _, info in ipairs(self.AttributeInfos) do
-		local attrName = info.Name
-		local currentValue = folder:GetAttribute(attrName)
-		if currentValue ~= nil then
-			self:StoreOriginal(folder, attrName, currentValue)
-			local newValue = G_Option("VehicleMods_" .. attrName)
-			if newValue ~= nil then
-				folder:SetAttribute(attrName, newValue)
-			end
-		end
-	end
-
-	local torqueMultiplier = G_Option("VehicleMods_TorqueMultiplier")
-	if torqueMultiplier == nil then
-		torqueMultiplier = 1
-	end
-	for _, attrName in ipairs(self.TorqueAttributes) do
-		local currentValue = folder:GetAttribute(attrName)
-		if currentValue ~= nil then
-			self:StoreOriginal(folder, attrName, currentValue)
-			local original = self.AttributeCache[folder] and self.AttributeCache[folder][attrName]
-			if type(original) == "number" and type(torqueMultiplier) == "number" then
-				folder:SetAttribute(attrName, original * torqueMultiplier)
-			end
-		end
-	end
-end
-
-function VehicleModSystem:ApplyAttributeModifiers(vehicle: Model)
-	for _, child in ipairs(vehicle:GetChildren()) do
-		if child:IsA("Folder") then
-			self:ApplyAttributeFolder(child)
-		end
-	end
-end
-
-function VehicleModSystem:ApplySlamModifier(vehicle: Model)
-	local chassis = vehicle:FindFirstChild("Chassis")
-	if not (chassis and chassis:IsA("BasePart")) then
-		return
-	end
-	if G_Toggle("VehicleSlam") then
-		if not self.ChassisCache[chassis] then
-			self.ChassisCache[chassis] = self:CaptureChassisState(chassis)
-		end
-		local cache = self.ChassisCache[chassis] or getDefaultPhysicalSnapshot(chassis)
-		local friction = cache.friction or 0.3
-		local elasticity = cache.elasticity or 0
-		local frictionWeight = cache.frictionWeight or 1
-		local elasticityWeight = cache.elasticityWeight or 1
-		chassis.CustomPhysicalProperties = PhysicalProperties.new(50, friction, elasticity, frictionWeight, elasticityWeight)
-	else
-		local cache = self.ChassisCache[chassis]
-		if cache then
-			self:RestoreChassisState(chassis, cache)
-			self.ChassisCache[chassis] = nil
-		end
-	end
-end
-
-function VehicleModSystem:PruneCache()
-	for instance in pairs(self.AttributeCache) do
-		if not self:IsInstanceValid(instance) then
-			self.AttributeCache[instance] = nil
-		end
-	end
-	for instance in pairs(self.ChassisCache) do
-		if not self:IsInstanceValid(instance) then
-			self.ChassisCache[instance] = nil
-		end
-	end
-end
-
-function VehicleModSystem:RestoreSlam()
-	for chassis, cache in pairs(self.ChassisCache) do
-		if self:IsInstanceValid(chassis) then
-			self:RestoreChassisState(chassis, cache)
-		end
-		self.ChassisCache[chassis] = nil
-	end
-end
-
-function VehicleModSystem:RevertVehicle(vehicle: Model?)
-	for instance, attrMap in pairs(self.AttributeCache) do
-		local shouldRevert = (not vehicle)
-			or (self:IsInstanceValid(instance) and instance:IsDescendantOf(vehicle))
-		if shouldRevert then
-			if self:IsInstanceValid(instance) then
-				for attrName, originalValue in pairs(attrMap) do
-					pcall(instance.SetAttribute, instance, attrName, originalValue)
-				end
-			end
-			self.AttributeCache[instance] = nil
-		end
-	end
-	for chassis, cache in pairs(self.ChassisCache) do
-		local shouldRevert = (not vehicle)
-			or (self:IsInstanceValid(chassis) and chassis:IsDescendantOf(vehicle))
-		if shouldRevert then
-			if self:IsInstanceValid(chassis) then
-				self:RestoreChassisState(chassis, cache)
-			end
-			self.ChassisCache[chassis] = nil
-		end
-	end
-end
-
-function VehicleModSystem:Reset()
-	self:RevertVehicle(nil)
-	self.LastVehicle = nil
-end
-
-function VehicleModSystem:Step()
-	self:PruneCache()
-	if not G_Toggle("VehicleModificationEnabled") then
-		if self.LastVehicle then
-			self:RevertVehicle(self.LastVehicle)
-			self.LastVehicle = nil
-		end
-		self:RevertVehicle(nil)
-		return
-	end
-
-	local VehicleData = FindVehicle()
-	local vehicle = VehicleData and VehicleData.Vehicle
-	if not (vehicle and vehicle.Parent) then
-		if self.LastVehicle then
-			self:RevertVehicle(self.LastVehicle)
-			self.LastVehicle = nil
-		end
-		return
-	end
-
-	if self.LastVehicle and self.LastVehicle ~= vehicle then
-		self:RevertVehicle(self.LastVehicle)
-	end
-
-	self.LastVehicle = vehicle
-	self:ApplyAttributeModifiers(vehicle)
-	self:ApplySlamModifier(vehicle)
-end
-
-VehicleTab:Section({
-    Title = 'Vehicle Functions:',
-})
-
-VehicleTab:Button({
-    Title = 'Bring Car',
-    Icon = 'car',
-    Callback = function()
-        local Vehicles = workspace:WaitForChild("Vehicles")
-        local LocalUserId = LocalPlayer.UserId
-
-        for _, Vehicle in next, Vehicles:GetChildren() do
-            if Vehicle:GetAttribute("OwnerUserId") == LocalUserId then
-                local Character = LocalPlayer.Character
-                if Character then
-                    Vehicle:PivotTo(Character:GetPivot() + Vector3.yAxis * 12)
-                    for _, Descendant in next, Vehicle:GetDescendants() do
-                        if Descendant:IsA("BasePart") then
-                            Descendant.AssemblyLinearVelocity = Vector3.zero
-                        end
-                    end
-                end
-            end
-        end
-    end,
-})
-
-VehicleTab:Divider()
-
-VehicleTab:Section({
-    Title = 'Vehicle Modifications:',
-})
-
-VehicleTab:Toggle({
-    Title = 'Vehicle Mods Enabled',
-    Flag = 'VehicleModificationEnabled',
-    Icon = 'settings',
-    Type = 'Checkbox',
-    Value = false,
-    Callback = function(Value)
-        if not Value then
-            VehicleModSystem:Reset()
-            local window = getgenv().Window
-            if window and window.Toggles and window.Toggles.VehicleSlam then
-                window.Toggles.VehicleSlam:SetValue(false)
-            end
-        else
-            VehicleModSystem:Step()
-        end
-    end,
-})
-
-VehicleTab:Toggle({
-    Title = 'Slammed Vehicle',
-    Flag = 'VehicleSlam',
-    Icon = 'arrow-down',
-    Type = 'Checkbox',
-    Value = false,
-    Callback = function(Value)
-        if not Value then
-            VehicleModSystem:RestoreSlam()
-        else
-            VehicleModSystem:Step()
-        end
-    end,
-})
-
-for _, Attribute in next, Storage.Vehicle_Attributes do
-    if Attribute.Type == "number" then
-        VehicleTab:Slider({
-            Title = Attribute.DisplayName,
-            Flag = 'VehicleMods_' .. Attribute.Name,
-            Step = 0.01,
-            Value = {
-                Min = Attribute.Min,
-                Max = Attribute.Max,
-                Default = Attribute.Min,
-            },
-        })
-    end
-end
-
-VehicleTab:Slider({
-    Title = 'Torque Multiplier',
-    Flag = 'VehicleMods_TorqueMultiplier',
-    Step = 0.01,
-    Value = {
-        Min = 0,
-        Max = 5,
-        Default = 1,
-    },
-})
-
-VehicleTab:Slider({
-    Title = 'Max Speed Multiplier',
-    Flag = 'VehicleMods_MaxSpeedMultiplier',
-    Step = 0.01,
-    Value = {
-        Min = 1,
-        Max = 1.3,
-        Default = 1,
-    },
-})
-
-task.spawn(function()
-    while task.wait(0.25) do
-        VehicleModSystem:Step()
-    end
-end)
-
-task.spawn(function()
-    while task.wait(0.5) do
-        if G_Toggle("VehicleModificationEnabled") then
-            local VehicleData = FindVehicle()
-            if VehicleData then
-                local Vehicle = VehicleData.Vehicle
-
-                task.spawn(function()
-                    for _, Child in next, Vehicle:GetChildren() do
-                        if Child:IsA("Folder") then
-                            for Attribute, _ in next, Child:GetAttributes() do
-                                for _, VehicleAttribute in next, Storage.Vehicle_Attributes do
-                                    if Attribute == VehicleAttribute.Name then
-                                        Child:SetAttribute(
-                                            Attribute,
-                                            G_Option("VehicleMods_" .. VehicleAttribute.Name)
-                                        )
-                                    end
-                                end
-
-                                if Attribute == "maxSpeedTorque" then
-                                    if not Child:GetAttribute("OldmaxSpeedTorque") then
-                                        Child:SetAttribute("OldmaxSpeedTorque", Child:GetAttribute("maxSpeedTorque"))
-                                    end
-
-                                    Child:SetAttribute(
-                                        "maxSpeedTorque",
-                                        Child:GetAttribute("OldmaxSpeedTorque")
-                                            * G_Option("VehicleMods_TorqueMultiplier")
-                                    )
-                                elseif Attribute == "minSpeedTorque" then
-                                    if not Child:GetAttribute("OldminSpeedTorque") then
-                                        Child:SetAttribute("OldminSpeedTorque", Child:GetAttribute("minSpeedTorque"))
-                                    end
-
-                                    Child:SetAttribute(
-                                        "minSpeedTorque",
-                                        Child:GetAttribute("OldminSpeedTorque")
-                                            * G_Option("VehicleMods_TorqueMultiplier")
-                                    )
-                                end
-                            end
-                        end
-                    end
-                end)
-            end
-        end
-    end
-end)
 
 local VisualTab = Window:Tab({
     Title = 'Visual',
