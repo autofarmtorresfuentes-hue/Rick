@@ -628,7 +628,7 @@ Icons.SetIconsType('lucide')
 -- Imagen del icono del menu y del boton de abrir.
 -- OJO: los enlaces de Discord caducan; si la imagen deja de verse,
 -- vuelve a subir el archivo y pega aqui la URL nueva.
-local ICON_URL = 'https://cdn.discordapp.com/attachments/1567752934761042010/1568004745837412492/file_00000000d25c8212ac96082d082d82a5.png?ex=6aee3db7&is=6aecec37&hm=439d0982fed91191f511d942396d27f698b6344d4ef95c4bfb29f924b1f38575&'
+local ICON_URL = 'https://cdn.discordapp.com/attachments/1567752934761042010/1568534166616809613/file_00000000d25c8212ac96082d082d82a5.png?ex=6af02ac7&is=6aeed947&hm=ce1800957b61839bfca3d0b676ecf83a6e68981e164b417e6b8cc96d26843c93&'
 
 local themeName = 'Dark'
 
@@ -1007,16 +1007,49 @@ task.spawn(function()
 end)
 
 MainTab:Toggle({
-    Title = 'Auto Pick Item',
-    Flag = 'Pickitem',
-    Desc = 'Pick up items that are far away',
+    Title = 'Pickup items',
+    Desc = 'Recoge los items que esten cerca de ti (BB Hub)',
+    Flag = 'pickup_items_bb',
     Icon = 'check',
     Type = 'Checkbox',
     Value = false,
-    Callback = function(value)
-        _G.AutoPickItems = value
+    Callback = function(Value)
+        _G.BbPickupItems = Value
     end,
 })
+
+task.spawn(function()
+    while task.wait(0.15) do
+        if _G.BbPickupItems then
+            local character = Client.Character
+            local hrp = character and character:FindFirstChild('HumanoidRootPart')
+
+            if hrp then
+                local container = workspace:FindFirstChild('DroppedItems')
+
+                if container then
+                    for _, item in ipairs(container:GetChildren()) do
+                        if item:IsA('Model') then
+                            local zone = item:FindFirstChild('PickUpZone')
+
+                            if zone then
+                                local dist = (item:GetPivot().Position - hrp.Position).Magnitude
+
+                                if dist <= 50 then
+                                    pcall(function()
+                                        firetouchinterest(zone, hrp, 0)
+                                        firetouchinterest(zone, hrp, 1)
+                                    end)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
 
 local rarities = {
     'Common',
@@ -1026,17 +1059,7 @@ local rarities = {
     'Legendary',
 }
 
-MainTab:Dropdown({
-    Title = 'Blacklist Rarity',
-    Flag = 'BlacklistRarity',
-    Values = rarities,
-    Default = {},
-    Multi = true,
-    AllowNone = true,
-    Callback = function(selected)
-        _G.BlacklistRarity = selected
-    end,
-})
+
 
 local AutoDropEnabled = false
 local SelectedRarity = { 'Common' }
@@ -1230,127 +1253,68 @@ MainTab:Toggle({
         end
     end,
 })
-do
-
--- ===========================================================
--- Anti Aim (estilo Upside Down Animation Pack)
--- Solo el personaje se voltea: es un cambio visual (RootJoint),
--- no toca la fisica. Caminas, saltas, miras y controlas todo
--- como normalmente, con tus animaciones originales.
--- Se pone y se quita cada segundo, sin parar. No usa el Snap.
--- ===========================================================
-local AntiAimEnabled = false
-local AntiAimPhase = false
-local AntiAimPhaseStart = 0
-local ANTI_AIM_FLIP_SECONDS = 1
-
-local AntiAimJoint = nil
-local AntiAimJointC0 = nil
-
-local function AntiAimGetJoint(character)
-    local hrp = character and character:FindFirstChild('HumanoidRootPart')
-
-    if not hrp then
-        AntiAimJoint = nil
-        AntiAimJointC0 = nil
-
-        return nil
-    end
-
-    if AntiAimJoint and AntiAimJoint.Parent == hrp then
-        return AntiAimJoint
-    end
-
-    AntiAimJoint = hrp:FindFirstChild('RootJoint')
-    AntiAimJointC0 = AntiAimJoint and AntiAimJoint.C0
-
-    return AntiAimJoint
-end
-
-local function AntiAimSetFlip(flip)
-    local joint = AntiAimGetJoint(Client.Character)
-
-    if not joint or not AntiAimJointC0 then
-        return
-    end
-
-    if flip then
-        joint.C0 = AntiAimJointC0 * CFrame.Angles(0, 0, math.pi)
-    else
-        joint.C0 = AntiAimJointC0
-    end
-end
-
-RunService.Heartbeat:Connect(function()
-    if not AntiAimEnabled then
-        return
-    end
-
-    local now = os.clock()
-
-    if now - AntiAimPhaseStart >= ANTI_AIM_FLIP_SECONDS then
-        AntiAimPhaseStart = now
-        AntiAimPhase = not AntiAimPhase
-    end
-
-    AntiAimSetFlip(AntiAimPhase)
-end)
-
 MainTab:Toggle({
-    Title = 'Anti Aim',
-    Flag = 'anti_aim_upside',
-    Desc = 'Solo se voltea el personaje; controlas todo normal',
-    Icon = 'check',
-    Type = 'Checkbox',
-    Value = false,
-    Callback = function(Value)
-        AntiAimEnabled = Value
-        AntiAimPhase = false
-
-        if Value then
-            AntiAimPhaseStart = os.clock()
-        else
-            AntiAimSetFlip(false)
-        end
-    end,
-})
-
-end
-
-MainTab:Toggle({
-    Title = 'Hide Name',
+    Title = 'Montana On Top',
     Flag = 'HideName',
-    Desc = 'Disable your name only client',
+    Desc = 'Pone MONTANA en rojo sobre tu cabeza, no se quita al morir',
     Icon = 'check',
     Type = 'Checkbox',
     Value = false,
     Callback = function(Value)
         _G.HideName = Value
 
-        local function toggleName()
+        local function applyTop()
             local char = LocalPlayer.Character
+            local hrp = char and char:FindFirstChild('HumanoidRootPart')
 
-            if char then
-                local hrp = char:FindFirstChild('HumanoidRootPart')
+            if not hrp then
+                return
+            end
 
-                if hrp then
-                    local bbGui = hrp:FindFirstChild('CharacterBillboardGui')
+            local old = hrp:FindFirstChild('MontanaTopGui')
 
-                    if bbGui then
-                        bbGui.Enabled = not _G.HideName
-                    end
-                end
+            if old then
+                old:Destroy()
+            end
+
+            local gameName = hrp:FindFirstChild('CharacterBillboardGui')
+
+            if gameName then
+                gameName.Enabled = not _G.HideName
+            end
+
+            if _G.HideName then
+                local gui = Instance.new('BillboardGui')
+                gui.Name = 'MontanaTopGui'
+                gui.Size = UDim2.new(0, 200, 0, 44)
+                gui.StudsOffset = Vector3.new(0, 2.6, 0)
+                gui.AlwaysOnTop = true
+                gui.MaxDistance = 500
+                gui.Adornee = hrp
+
+                local label = Instance.new('TextLabel')
+                label.Size = UDim2.new(1, 0, 1, 0)
+                label.BackgroundTransparency = 1
+                label.Font = Enum.Font.GothamBlack
+                label.Text = 'MONTANA'
+                label.TextScaled = true
+                label.TextColor3 = Color3.fromRGB(255, 0, 0)
+                label.TextStrokeTransparency = 0.2
+                label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+                label.Parent = gui
+
+                gui.Parent = hrp
             end
         end
 
-        toggleName()
+        applyTop()
 
         if _G.HideName then
             if not _G.HideNameConn then
                 _G.HideNameConn = LocalPlayer.CharacterAdded:Connect(function(char)
                     if _G.HideName then
                         task.wait(1)
-                        toggleName()
+                        applyTop()
                     end
                 end)
             end
@@ -2692,14 +2656,115 @@ CombatTab:Toggle({
 CombatTab:Toggle({
     Title = 'Show FOV',
     Flag = 'show',
-    Desc = 'Display FOV circle',
+    Desc = 'Display FOV circle (no se quita al morir)',
     Icon = 'check',
     Type = 'Checkbox',
     Default = false,
     Callback = function(state)
         ShowFOVEnabled = state
+
+        if state then
+            task.spawn(function()
+                while ShowFOVEnabled do
+                    task.wait(0.5)
+
+                    pcall(function()
+                        if FOVCircleGui and not FOVCircleGui.Parent then
+                            FOVCircleGui.Parent = game:GetService('CoreGui')
+                        end
+
+                        if FOVCircleFrame and FOVCircleFrame.Parent then
+                            FOVCircleFrame.Visible = SilentAimEnabled and ShowFOVEnabled
+                        end
+
+                        if SilentAimEnabled and ShowFOVEnabled and not IsMobile then
+                            for _, seg in ipairs(FOVCircleSegments) do
+                                pcall(function()
+                                    seg.Visible = true
+                                end)
+                            end
+                        end
+                    end)
+                end
+            end)
+        end
     end,
 })
+do
+-- Línea: dibuja una linea desde tu personaje hasta el objetivo
+-- que tiene bloqueado el Silent Aim
+do
+    local LineEnabled = false
+    local LineDrawing = nil
+
+    CombatTab:Toggle({
+        Title = 'Línea',
+        Desc = 'Linea hacia el objetivo del Silent Aim',
+        Flag = 'lock_line',
+        Icon = 'check',
+        Type = 'Checkbox',
+        Default = false,
+        Callback = function(state)
+            LineEnabled = state
+
+            if not state and LineDrawing then
+                LineDrawing.Visible = false
+            end
+        end,
+    })
+
+    RunService.RenderStepped:Connect(function()
+        if not LineEnabled or not SilentAimEnabled then
+            if LineDrawing and LineDrawing.Visible then
+                LineDrawing.Visible = false
+            end
+
+            return
+        end
+
+        local character = Client.Character
+        local myHrp = character and character:FindFirstChild('HumanoidRootPart')
+        local target = CurrentTarget
+
+        if not LineDrawing then
+            local ok = pcall(function()
+                LineDrawing = Drawing.new('Line')
+            end)
+
+            if not ok or not LineDrawing then
+                return
+            end
+
+            LineDrawing.Thickness = 2
+            LineDrawing.Color = Color3.fromRGB(255, 0, 0)
+            LineDrawing.Transparency = 1
+        end
+
+        if not myHrp or not target or not target.Character then
+            LineDrawing.Visible = false
+
+            return
+        end
+
+        local camera = workspace.CurrentCamera
+        local targetChar = target.Character
+        local targetHead = targetChar:FindFirstChild('Head')
+        local targetPos = targetHead and targetHead.Position or targetChar:GetPivot().Position
+        local myPos = myHrp.Position + Vector3.new(0, 2, 0)
+        local myScreen = camera:WorldToViewportPoint(myPos)
+        local tScreen = camera:WorldToViewportPoint(targetPos)
+
+        if myScreen and tScreen and myScreen.Z > 0 and tScreen.Z > 0 then
+            LineDrawing.From = Vector2.new(myScreen.X, myScreen.Y)
+            LineDrawing.To = Vector2.new(tScreen.X, tScreen.Y)
+            LineDrawing.Visible = true
+        else
+            LineDrawing.Visible = false
+        end
+    end)
+end
+end
+
 CombatTab:Toggle({
     Title = 'Smart Predict',
     Flag = 'smartpredict',
@@ -4286,208 +4351,246 @@ VisualTab:Toggle({
     Callback = function(Value) _G.ShowSkeleton = Value end,
 })
 
-VisualTab:Toggle({
-    Title = 'Inventory Viewer',
-    Flag = 'inventoryviewer',
-    Icon = 'check',
-    Type = 'Checkbox',
-    Default = true,
-    Callback = function(Value)
-        _G.InventoryViewerEnabled = Value
+-- Inventory Viewer (BB Hub): iconos de las armas de cada jugador
+do
+    local BbViewerEnabled = false
+    local BbViewerGen = 0
+    local BbViewerBillboards = {}
+    local BbRarityColors = {
+        Common = Color3.fromRGB(255, 255, 255),
+        Uncommon = Color3.fromRGB(99, 255, 52),
+        Rare = Color3.fromRGB(51, 170, 255),
+        Epic = Color3.fromRGB(237, 44, 255),
+        Legendary = Color3.fromRGB(255, 150, 0),
+        Omega = Color3.fromRGB(255, 20, 51),
+    }
+    local BbWeaponCache = {}
 
-        local Players = game:GetService('Players')
-        local ReplicatedStorage = game:GetService('ReplicatedStorage')
-        local Client = Players.LocalPlayer
-
-        local function GetColorFromRarity(rarityName)
-            local colors = {
-                Common = Color3.fromRGB(255, 255, 255),
-                UnCommon = Color3.fromRGB(99, 255, 52),
-                Rare = Color3.fromRGB(51, 170, 255),
-                Legendary = Color3.fromRGB(255, 150, 0),
-                Epic = Color3.fromRGB(237, 44, 255),
-                Omega = Color3.fromRGB(255, 20, 51),
-            }
-
-            return colors[rarityName] or Color3.fromRGB(255, 255, 255)
+    local function BbRegisterItems(folder)
+        if not folder then
+            return
         end
 
-        if Value then
-            if not _G.ViewerRunning then
-                _G.ViewerRunning = true
+        for _, tool in ipairs(folder:GetChildren()) do
+            if tool:IsA('Tool') then
+                local handle = tool:FindFirstChild('Handle')
+                local displayName = tool:GetAttribute('DisplayName') or tool.Name
+                local itemId = tool:GetAttribute('ItemId') or tool:GetAttribute('Id') or tool.Name
+                local rarity = tool:GetAttribute('RarityName') or 'Common'
+                local imageId = tool:GetAttribute('ImageId') or 'rbxassetid://7072725737'
+                local key = nil
 
-                task.spawn(function()
-                    while task.wait(0.2) do
-                        if _G.InventoryViewerEnabled then
-                            pcall(function()
-                                for _, v in pairs(Players:GetPlayers())do
-                                    if v ~= Client and v.Character and v.Character:FindFirstChild('HumanoidRootPart') then
-                                        local root = v.Character.HumanoidRootPart
-                                        local gui = root:FindFirstChild('ItemBillboard')
+                if handle then
+                    local mesh = handle:FindFirstChildOfClass('SpecialMesh')
 
-                                        if not gui then
-                                            gui = Instance.new('BillboardGui')
-                                            gui.Name = 'ItemBillboard'
-                                            gui.AlwaysOnTop = true
-                                            gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-                                            gui.Size = UDim2.new(0, 300, 0, 80)
-                                            gui.StudsOffset = Vector3.new(0, -5, 0)
-                                            gui.ExtentsOffset = Vector3.new(0, 1, 0)
-                                            gui.LightInfluence = 1
-                                            gui.Parent = root
-
-                                            local bg = Instance.new('Frame')
-
-                                            bg.Name = 'BG'
-                                            bg.BackgroundTransparency = 1
-                                            bg.Size = UDim2.new(1, 0, 1, 0)
-                                            bg.AnchorPoint = Vector2.new(0.5, 0.5)
-                                            bg.Position = UDim2.new(0.5, 0, 0.5, 0)
-                                            bg.Parent = gui
-
-                                            local layout = Instance.new('UIListLayout')
-
-                                            layout.FillDirection = Enum.FillDirection.Horizontal
-                                            layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-                                            layout.VerticalAlignment = Enum.VerticalAlignment.Center
-                                            layout.Padding = UDim.new(0, 8)
-                                            layout.Parent = bg
-                                        end
-
-                                        local bg = gui:FindFirstChild('BG')
-
-                                        if bg then
-                                            local Items = {}
-
-                                            for _, child in pairs(bg:GetChildren())do
-                                                if child:IsA('Frame') then
-                                                    child:Destroy()
-                                                end
-                                            end
-                                            for _, container in pairs({
-                                                v:FindFirstChild('Backpack'),
-                                                v.Character,
-                                            })do
-                                                if container then
-                                                    for _, tool in pairs(container:GetChildren())do
-                                                        if tool:IsA('Tool') and not tool:GetAttribute('JobTool') and not tool:GetAttribute('Locked') then
-                                                            local itemFolder = tool:GetAttribute('AmmoType') and ReplicatedStorage.Items.gun or ReplicatedStorage.Items.melee
-
-                                                            for _, z in pairs(itemFolder:GetChildren())do
-                                                                if tool:GetAttribute('RarityName') == z:GetAttribute('RarityName') and tool:GetAttribute('RarityPrice') == z:GetAttribute('RarityPrice') then
-                                                                    local imageId = z:GetAttribute('ImageId')
-
-                                                                    if imageId then
-                                                                        Items[z.Name] = true
-
-                                                                        if not bg:FindFirstChild(z.Name .. '_bg') then
-                                                                            local itemContainer = Instance.new('Frame')
-
-                                                                            itemContainer.Name = z.Name .. '_bg'
-                                                                            itemContainer.Size = UDim2.new(0, 50, 0, 70)
-                                                                            itemContainer.BackgroundTransparency = 1
-                                                                            itemContainer.BorderSizePixel = 0
-                                                                            itemContainer.Parent = bg
-
-                                                                            local iconBg = Instance.new('Frame')
-
-                                                                            iconBg.Name = 'IconBg'
-                                                                            iconBg.Size = UDim2.new(0, 50, 0, 50)
-                                                                            iconBg.Position = UDim2.new(0, 0, 0, 0)
-                                                                            iconBg.BackgroundColor3 = GetColorFromRarity(z:GetAttribute('RarityName'))
-                                                                            iconBg.BackgroundTransparency = 1
-                                                                            iconBg.BorderSizePixel = 0
-                                                                            iconBg.Parent = itemContainer
-
-                                                                            local bgImage = Instance.new('ImageLabel')
-
-                                                                            bgImage.Name = 'Background'
-                                                                            bgImage.Size = UDim2.new(1, 0, 1, 0)
-                                                                            bgImage.BackgroundTransparency = 1
-                                                                            bgImage.Image = 'rbxassetid://137066731814190'
-                                                                            bgImage.ImageColor3 = GetColorFromRarity(z:GetAttribute('RarityName'))
-                                                                            bgImage.ZIndex = 0
-                                                                            bgImage.Parent = iconBg
-
-                                                                            local corner = Instance.new('UICorner')
-
-                                                                            corner.CornerRadius = UDim.new(0.15, 0)
-                                                                            corner.Parent = iconBg
-
-                                                                            local icon = Instance.new('ImageLabel')
-
-                                                                            icon.Name = z.Name
-                                                                            icon.Image = imageId
-                                                                            icon.BackgroundTransparency = 1
-                                                                            icon.BorderSizePixel = 0
-                                                                            icon.Size = UDim2.new(0.85, 0, 0.85, 0)
-                                                                            icon.Position = UDim2.new(0.075, 0, 0.075, 0)
-                                                                            icon.Parent = iconBg
-
-                                                                            local corner2 = Instance.new('UICorner')
-
-                                                                            corner2.CornerRadius = UDim.new(0, 9)
-                                                                            corner2.Parent = icon
-
-                                                                            local nameLabel = Instance.new('TextLabel')
-
-                                                                            nameLabel.Name = 'WeaponName'
-                                                                            nameLabel.Size = UDim2.new(1, 0, 0, 20)
-                                                                            nameLabel.Position = UDim2.new(0, 0, 0, 52)
-                                                                            nameLabel.BackgroundTransparency = 1
-                                                                            nameLabel.Text = z.Name
-                                                                            nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-                                                                            nameLabel.TextStrokeTransparency = 0.5
-                                                                            nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-                                                                            nameLabel.TextScaled = true
-                                                                            nameLabel.Font = Enum.Font.GothamBold
-                                                                            nameLabel.Parent = itemContainer
-
-                                                                            local textSizeConstraint = Instance.new('UITextSizeConstraint')
-
-                                                                            textSizeConstraint.MaxTextSize = 10
-                                                                            textSizeConstraint.Parent = nameLabel
-                                                                        end
-                                                                    end
-                                                                end
-                                                            end
-                                                        end
-                                                    end
-                                                end
-                                            end
-
-                                            gui.Enabled = _G.InventoryViewerEnabled
-
-                                            for _, child in pairs(bg:GetChildren())do
-                                                if child:IsA('Frame') then
-                                                    local itemName = child.Name:gsub('_bg$', '')
-
-                                                    if not Items[itemName] then
-                                                        child:Destroy()
-                                                    end
-                                                end
-                                            end
-                                        end
-                                    end
-                                end
-                            end)
-                        end
+                    if mesh and mesh.MeshId ~= '' then
+                        key = mesh.MeshId .. (mesh.TextureId or '') .. '_RARITY_' .. rarity
+                    elseif handle:IsA('MeshPart') and handle.MeshId ~= '' then
+                        key = handle.MeshId .. (handle.TextureID or '') .. '_RARITY_' .. rarity
                     end
-                end)
-            end
-        else
-            for _, v in pairs(Players:GetPlayers())do
-                if v.Character and v.Character:FindFirstChild('HumanoidRootPart') then
-                    local gui = v.Character.HumanoidRootPart:FindFirstChild('ItemBillboard')
+                end
 
-                    if gui then
-                        gui:Destroy()
+                if not key and itemId and itemId ~= '' and itemId ~= tool.Name then
+                    key = 'ITEMID_' .. itemId .. '_RARITY_' .. rarity
+                end
+
+                if not key then
+                    key = 'NAME_' .. displayName .. '_' .. tool.Name .. '_RARITY_' .. rarity
+                end
+
+                BbWeaponCache[key] = {
+                    Name = displayName,
+                    Rarity = rarity,
+                    ImageId = imageId,
+                    ToolName = tool.Name,
+                }
+            end
+        end
+    end
+
+    local function BbWeaponKey(tool)
+        local handle = tool:FindFirstChild('Handle')
+        local displayName = tool:GetAttribute('DisplayName') or tool.Name
+        local itemId = tool:GetAttribute('ItemId') or tool:GetAttribute('Id') or tool.Name
+        local rarity = tool:GetAttribute('RarityName') or 'Common'
+
+        if handle then
+            local mesh = handle:FindFirstChildOfClass('SpecialMesh')
+
+            if mesh and mesh.MeshId ~= '' then
+                return mesh.MeshId .. (mesh.TextureId or '') .. '_RARITY_' .. rarity
+            elseif handle:IsA('MeshPart') and handle.MeshId ~= '' then
+                return handle.MeshId .. (handle.TextureID or '') .. '_RARITY_' .. rarity
+            end
+        end
+
+        if itemId and itemId ~= '' and itemId ~= tool.Name then
+            return 'ITEMID_' .. itemId .. '_RARITY_' .. rarity
+        end
+
+        return 'NAME_' .. displayName .. '_' .. tool.Name .. '_RARITY_' .. rarity
+    end
+
+    local function BbWeaponInfo(tool)
+        if not tool or not tool:IsA('Tool') then
+            return nil
+        end
+
+        return BbWeaponCache[BbWeaponKey(tool)]
+    end
+
+    local function BbClearBillboards()
+        for _, gui in pairs(BbViewerBillboards) do
+            gui:Destroy()
+        end
+
+        BbViewerBillboards = {}
+    end
+
+    local function BbCreateBillboard(player)
+        if not BbViewerEnabled or player == Client then
+            return
+        end
+
+        local character = player.Character
+        local hrp = character and character:FindFirstChild('HumanoidRootPart')
+
+        if not character or not hrp then
+            return
+        end
+
+        if BbViewerBillboards[player] then
+            BbViewerBillboards[player]:Destroy()
+            BbViewerBillboards[player] = nil
+        end
+
+        local gui = Instance.new('BillboardGui')
+        gui.Adornee = hrp
+        gui.Size = UDim2.new(0, 90, 0, 20)
+        gui.StudsOffset = Vector3.new(0, -5, 0)
+        gui.AlwaysOnTop = true
+
+        local layout = Instance.new('UIListLayout')
+        layout.FillDirection = Enum.FillDirection.Horizontal
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+        layout.Padding = UDim.new(0, 5)
+        layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        layout.Parent = gui
+
+        local tools = {}
+
+        for _, name in ipairs({'Backpack', 'StarterGear', 'StarterPack'}) do
+            local holder = player:FindFirstChild(name)
+
+            if holder then
+                for _, tool in ipairs(holder:GetChildren()) do
+                    if tool:IsA('Tool') and tool.Name ~= 'Fists' then
+                        table.insert(tools, tool)
                     end
                 end
             end
         end
-    end,
-})
+
+        for _, tool in ipairs(character:GetChildren()) do
+            if tool:IsA('Tool') and tool.Name ~= 'Fists' then
+                table.insert(tools, tool)
+            end
+        end
+
+        for _, tool in ipairs(tools) do
+            local info = BbWeaponInfo(tool)
+
+            if info then
+                local icon = Instance.new('ImageLabel')
+                icon.Size = UDim2.new(0, 20, 0, 20)
+                icon.BackgroundTransparency = 0.1
+                icon.Image = info.ImageId
+                icon.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+                icon.LayoutOrder = #tools
+
+                local corner = Instance.new('UICorner')
+                corner.CornerRadius = UDim.new(0, 5)
+                corner.Parent = icon
+
+                local stroke = Instance.new('UIStroke')
+                stroke.Color = BbRarityColors[info.Rarity] or Color3.new(1, 1, 1)
+                stroke.Thickness = 2
+                stroke.Parent = icon
+
+                icon.Parent = gui
+            end
+        end
+
+        gui.Parent = character
+        BbViewerBillboards[player] = gui
+    end
+
+    local itemsRoot = ReplicatedStorage:FindFirstChild('Items')
+
+    if itemsRoot then
+        for _, sub in ipairs(itemsRoot:GetChildren()) do
+            BbRegisterItems(sub)
+        end
+
+        itemsRoot.ChildAdded:Connect(function(sub)
+            BbRegisterItems(sub)
+        end)
+    end
+
+    ReplicatedStorage.ChildAdded:Connect(function(child)
+        if child.Name == 'Items' then
+            for _, sub in ipairs(child:GetChildren()) do
+                BbRegisterItems(sub)
+            end
+        end
+    end)
+
+    Players.PlayerRemoving:Connect(function(player)
+        if BbViewerBillboards[player] then
+            BbViewerBillboards[player]:Destroy()
+            BbViewerBillboards[player] = nil
+        end
+    end)
+
+    VisualTab:Toggle({
+        Title = 'Inventory Viewer',
+        Desc = 'Muestra las armas de cada jugador (BB Hub)',
+        Flag = 'inventoryviewer',
+        Icon = 'check',
+        Type = 'Checkbox',
+        Default = false,
+        Callback = function(Value)
+            BbViewerEnabled = Value
+
+            if Value then
+                for _, player in ipairs(Players:GetPlayers()) do
+                    if player ~= Client and player.Character then
+                        BbCreateBillboard(player)
+                    end
+                end
+
+                BbViewerGen = BbViewerGen + 1
+                local myGen = BbViewerGen
+
+                task.spawn(function()
+                    while BbViewerEnabled and myGen == BbViewerGen do
+                        task.wait(0.25)
+
+                        for _, player in ipairs(Players:GetPlayers()) do
+                            if player ~= Client and player.Character then
+                                BbCreateBillboard(player)
+                            end
+                        end
+                    end
+                end)
+            else
+                BbViewerGen = BbViewerGen + 1
+                BbClearBillboards()
+            end
+        end,
+    })
+end
+
 
 local RunService = game:GetService('RunService')
 local ReplicatedStorage = game:GetService('ReplicatedStorage')
