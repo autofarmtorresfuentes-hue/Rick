@@ -2182,7 +2182,11 @@ task.spawn(function()
     local LineLockOn = false
     local BbFovRadius = 120
     local BbTarget = nil
-    local BbExcluded = { '' }
+
+    -- lista de Safe Friends compartida con el ESP y con Combat
+    _G.MontanaSafeList = _G.MontanaSafeList or {}
+
+    local BbExcluded = _G.MontanaSafeList
     local BbSmoothPos = Vector3.zero
     local BbLerpAlpha = 0.35
 
@@ -2665,13 +2669,83 @@ task.spawn(function()
         end,
     })
 
-    CombatTab:Input({
-        Title = 'Safe Friend',
-        Placeholder = 'nombre del jugador...',
+    local function BbSafeBuildList()
+        local list = {}
+
+        for _, pl in ipairs(Players:GetPlayers()) do
+            if pl ~= Client then
+                table.insert(list, pl.Name)
+            end
+        end
+
+        return list
+    end
+
+    local BbSafeDropdown
+
+    local function BbSafeRefresh()
+        pcall(function()
+            BbSafeDropdown:Refresh(BbSafeBuildList())
+        end)
+    end
+
+    CombatTab:Section({
+        Title = 'Safe Friends:',
+    })
+
+    BbSafeDropdown = CombatTab:Dropdown({
+        Title = 'Safe Friend Select',
+        Values = BbSafeBuildList(),
         Callback = function(value)
-            BbExcluded = { tostring(value or '') }
+            local name = tostring(value or '')
+
+            if name == '' then
+                return
+            end
+
+            local exists = false
+
+            for _, pl in ipairs(Players:GetPlayers()) do
+                if pl.Name == name then
+                    exists = true
+                    break
+                end
+            end
+
+            if not exists then
+                return
+            end
+
+            if BbIsExcluded(name) then
+                for i, existing in ipairs(BbExcluded) do
+                    if existing == name then
+                        table.remove(BbExcluded, i)
+                        break
+                    end
+                end
+            else
+                table.insert(BbExcluded, name)
+            end
         end,
     })
+
+    CombatTab:Button({
+        Title = 'Refresh Users',
+        Desc = 'Actualiza la lista de users del servidor',
+        Callback = function()
+            BbSafeRefresh()
+        end,
+    })
+
+    Players.PlayerAdded:Connect(function()
+        task.wait(0.5)
+        BbSafeRefresh()
+    end)
+
+    Players.PlayerRemoving:Connect(function()
+        task.wait(0.5)
+        BbSafeRefresh()
+    end)
 end)
 
 local Camera = workspace.CurrentCamera
@@ -2754,7 +2828,23 @@ do
 -- - Melee Aura: modifica los atributos 6 y 7 (ordenados) de
 --   Fists y de las herramientas melee a 360 y 20; al apagar
 --   restaura los valores originales.
+-- - Los Safe Friend (lista compartida del Silent Aim) nunca
+--   son golpeados por el Auto Attack.
 -- ===========================================================
+_G.MontanaSafeList = _G.MontanaSafeList or {}
+
+_G.IsSafeFriend = _G.IsSafeFriend or function(name)
+    name = string.lower(tostring(name or ''))
+
+    for _, pattern in ipairs(_G.MontanaSafeList) do
+        if pattern ~= '' and string.find(name, string.lower(pattern), 1, true) then
+            return true
+        end
+    end
+
+    return false
+end
+
 local PromeAutoAttackEnabled = false
 local PromeMeleeAuraEnabled = false
 local PromeLastAutoAttack = 0
@@ -2934,7 +3024,7 @@ task.spawn(function()
                     local nearestDist = 15
 
                     for _, pl in ipairs(Players:GetPlayers()) do
-                        if pl ~= Client and pl.Character then
+                        if pl ~= Client and pl.Character and not _G.IsSafeFriend(pl.Name) then
                             local targetRoot = pl.Character:FindFirstChild('HumanoidRootPart')
 
                             if targetRoot then
@@ -3479,182 +3569,296 @@ VisualTab:Section({
     Title = 'Players:',
 })
 
-_G.ShowBox = false
-_G.ShowName = false
-_G.ShowTracer = false
-_G.ShowSkeleton = false
-_G.ShowHealth = false
+-- ESP del BB Hub: Name / Health / Distance / Highlight
+-- (los Safe Friends se ven en verde, igual que en el BB Hub)
+local BbEspPlayers = game:GetService('Players')
+local BbEspLocal = BbEspPlayers.LocalPlayer
+local BbEspRunService = game:GetService('RunService')
 
-local function CreateESP(player)
-    local objects = {
-        Tracer = Drawing.new("Line"),
-        Name = Drawing.new("Text"),
-        HealthBarOutline = Drawing.new("Line"),
-        HealthBar = Drawing.new("Line"),
-        BoxLines = {},
-        SkeletonLines = {}
-    }
+_G.MontanaSafeList = _G.MontanaSafeList or {}
 
-    for i = 1, 12 do objects.BoxLines[i] = Drawing.new("Line") end
-    for i = 1, 6 do objects.SkeletonLines[i] = Drawing.new("Line") end
+local BbEspNameOn = false
+local BbEspHealthOn = false
+local BbEspDistOn = false
+local BbEspHighlightOn = false
 
-    objects.Name.Center = true
-    objects.Name.Outline = true
-    objects.Name.Size = 14
-    objects.Name.Font = 2
-    objects.Name.Color = Color3.fromRGB(255, 255, 255)
+local BbEspEntries = {}
+local BbEspHighlights = {}
 
-    objects.HealthBar.Thickness = 2
-    objects.HealthBarOutline.Thickness = 3
-    objects.HealthBarOutline.Color = Color3.fromRGB(0, 0, 0)
+local function BbEspIsSafe(name)
+    name = string.lower(tostring(name or ''))
 
-    local function Update()
-        local connection
-        connection = RunService.Heartbeat:Connect(function()
-            local char = player.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            local hum = char and char:FindFirstChild("Humanoid")
-
-            if not player.Parent then
-                for _, obj in pairs(objects) do
-                    if type(obj) == "table" then for _, v in pairs(obj) do v:Remove() end
-                    else obj:Remove() end
-                end
-                connection:Disconnect()
-                return
-            end
-
-            local canShow = hrp and hum and hum.Health > 0
-            local hrp_pos, onScreen = nil, false
-
-            if canShow then
-                hrp_pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
-            end
-
-            if canShow and onScreen and _G.ShowTracer then
-                objects.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-                objects.Tracer.To = Vector2.new(hrp_pos.X, hrp_pos.Y)
-                objects.Tracer.Color = Color3.fromRGB(255, 255, 255)
-                objects.Tracer.Visible = true
-            else objects.Tracer.Visible = false end
-
-            local head = char and char:FindFirstChild("Head")
-            if canShow and onScreen and head then
-                local head_pos = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 1.5, 0))
-
-                if _G.ShowName then
-                    objects.Name.Position = Vector2.new(head_pos.X, head_pos.Y - 20)
-                    objects.Name.Text = string.format("[%s]", player.Name)
-                    objects.Name.Visible = true
-                else objects.Name.Visible = false end
-
-                if _G.ShowHealth then
-                    local bar_x = head_pos.X - 25
-                    local health_p = hum.Health / hum.MaxHealth
-                    objects.HealthBarOutline.From = Vector2.new(bar_x, head_pos.Y - 5)
-                    objects.HealthBarOutline.To = Vector2.new(bar_x + 50, head_pos.Y - 5)
-                    objects.HealthBarOutline.Visible = true
-
-                    objects.HealthBar.From = Vector2.new(bar_x, head_pos.Y - 5)
-                    objects.HealthBar.To = Vector2.new(bar_x + (50 * health_p), head_pos.Y - 5)
-                    objects.HealthBar.Color = Color3.fromHSV(health_p * 0.3, 1, 1)
-                    objects.HealthBar.Visible = true
-                else
-                    objects.HealthBar.Visible = false
-                    objects.HealthBarOutline.Visible = false
-                end
-            else
-                objects.Name.Visible = false
-                objects.HealthBar.Visible = false
-                objects.HealthBarOutline.Visible = false
-            end
-
-            if canShow and onScreen and _G.ShowBox then
-                local size = Vector3.new(2, 5, 1.2)
-                local cf = hrp.CFrame
-                local v = {
-                    cf * CFrame.new(size.X/2, size.Y/2, size.Z/2).Position, cf * CFrame.new(-size.X/2, size.Y/2, size.Z/2).Position,
-                    cf * CFrame.new(-size.X/2, -size.Y/2, size.Z/2).Position, cf * CFrame.new(size.X/2, -size.Y/2, size.Z/2).Position,
-                    cf * CFrame.new(size.X/2, size.Y/2, -size.Z/2).Position, cf * CFrame.new(-size.X/2, size.Y/2, -size.Z/2).Position,
-                    cf * CFrame.new(-size.X/2, -size.Y/2, -size.Z/2).Position, cf * CFrame.new(size.X/2, -size.Y/2, -size.Z/2).Position
-                }
-                local s = {}
-                for i=1,8 do s[i] = Camera:WorldToViewportPoint(v[i]) end
-                local pairs = {{1,2},{2,3},{3,4},{4,1},{5,6},{6,7},{7,8},{8,5},{1,5},{2,6},{3,7},{4,8}}
-                for i, p in ipairs(pairs) do
-                    objects.BoxLines[i].From = Vector2.new(s[p[1]].X, s[p[1]].Y)
-                    objects.BoxLines[i].To = Vector2.new(s[p[2]].X, s[p[2]].Y)
-                    objects.BoxLines[i].Color = Color3.fromRGB(255, 255, 255)
-                    objects.BoxLines[i].Visible = true
-                end
-            else for i=1,12 do objects.BoxLines[i].Visible = false end end
-
-            if canShow and onScreen and _G.ShowSkeleton then
-                local parts = {"Head", "UpperTorso", "LowerTorso", "LeftUpperArm", "RightUpperArm", "LeftUpperLeg", "RightUpperLeg"}
-                local v_skel = true
-                for _, p in pairs(parts) do if not char:FindFirstChild(p) then v_skel = false break end end
-
-                if v_skel then
-                    local function ToS(p) return Camera:WorldToViewportPoint(char[p].Position) end
-                    local j = {
-                        {ToS("Head"), ToS("UpperTorso")}, {ToS("UpperTorso"), ToS("LeftUpperArm")},
-                        {ToS("UpperTorso"), ToS("RightUpperArm")}, {ToS("UpperTorso"), ToS("LowerTorso")},
-                        {ToS("LowerTorso"), ToS("LeftUpperLeg")}, {ToS("LowerTorso"), ToS("RightUpperLeg")}
-                    }
-                    for i, joint in ipairs(j) do
-                        objects.SkeletonLines[i].From = Vector2.new(joint[1].X, joint[1].Y)
-                        objects.SkeletonLines[i].To = Vector2.new(joint[2].X, joint[2].Y)
-                        objects.SkeletonLines[i].Color = Color3.fromRGB(255, 255, 255)
-                        objects.SkeletonLines[i].Visible = true
-                    end
-                end
-            else for i=1,6 do objects.SkeletonLines[i].Visible = false end end
-        end)
+    for _, pattern in ipairs(_G.MontanaSafeList) do
+        if pattern ~= '' and string.find(name, string.lower(pattern), 1, true) then
+            return true
+        end
     end
-    coroutine.wrap(Update)()
+
+    return false
 end
 
-for _, p in pairs(Players:GetPlayers()) do if p ~= LocalPlayer then CreateESP(p) end end
-Players.PlayerAdded:Connect(function(p) if p ~= LocalPlayer then CreateESP(p) end end)
+local function BbEspCreate(player)
+    if BbEspEntries[player] then
+        return
+    end
+
+    local nameLabel = Drawing.new('Text')
+
+    nameLabel.Size = 16
+    nameLabel.Center = true
+    nameLabel.Outline = true
+    nameLabel.Color = BbEspIsSafe(player.Name) and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 255, 255)
+    nameLabel.Font = 4
+
+    local distLabel = Drawing.new('Text')
+
+    distLabel.Size = 14
+    distLabel.Center = true
+    distLabel.Outline = true
+    distLabel.Color = Color3.fromRGB(255, 255, 255)
+    distLabel.Font = 4
+
+    local hpBack = Drawing.new('Square')
+
+    hpBack.Filled = false
+    hpBack.Thickness = 1
+    hpBack.Color = Color3.fromRGB(0, 0, 0)
+    hpBack.Transparency = 0.9
+    hpBack.Visible = false
+
+    local hpFill = Drawing.new('Square')
+
+    hpFill.Filled = true
+    hpFill.Transparency = 0.9
+    hpFill.Visible = false
+
+    local drawings = { nameLabel, distLabel, hpBack, hpFill }
+
+    local conn
+
+    conn = BbEspRunService.RenderStepped:Connect(function()
+        if not player or not player.Character or not player.Character:FindFirstChild('HumanoidRootPart') then
+            for _, d in ipairs(drawings) do
+                d.Visible = false
+            end
+
+            return
+        end
+
+        local camera = workspace.CurrentCamera
+
+        if not camera then
+            return
+        end
+
+        local rootPart = player.Character.HumanoidRootPart
+        local humanoid = player.Character:FindFirstChild('Humanoid')
+        local distance = 0
+
+        if BbEspLocal.Character and BbEspLocal.Character:FindFirstChild('HumanoidRootPart') then
+            distance = (rootPart.Position - BbEspLocal.Character.HumanoidRootPart.Position).Magnitude
+        end
+
+        local pos, onScreen = camera:WorldToViewportPoint(rootPart.Position)
+
+        if not onScreen or pos.Z <= 0 then
+            for _, d in ipairs(drawings) do
+                d.Visible = false
+            end
+
+            return
+        end
+
+        local x = pos.X
+        local y = pos.Y - 15
+
+        if BbEspHealthOn and humanoid and humanoid.Health > 0 then
+            local pct = humanoid.Health / (humanoid.MaxHealth > 0 and humanoid.MaxHealth or 1)
+            local h = 4
+            local w = 60
+            local bx = x - w / 2
+
+            hpBack.Position = Vector2.new(bx, y - h - 2)
+            hpBack.Size = Vector2.new(w, h)
+            hpBack.Visible = true
+
+            hpFill.Position = Vector2.new(bx, y - h - 2)
+            hpFill.Size = Vector2.new(w * pct, h)
+            hpFill.Color = Color3.fromHSV(pct * 0.333, 0.8, 0.9)
+            hpFill.Visible = true
+
+            y = y - h - 6
+        else
+            hpBack.Visible = false
+            hpFill.Visible = false
+        end
+
+        if BbEspNameOn then
+            local minSize, maxSize = 14, 42
+            local alpha = math.clamp(distance / 50, 0, 1)
+            local size = maxSize - (maxSize - minSize) * alpha
+
+            nameLabel.Text = player.Name
+            nameLabel.Size = math.floor(size)
+            nameLabel.Color = BbEspIsSafe(player.Name) and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 255, 255)
+            nameLabel.Outline = true
+            nameLabel.Position = Vector2.new(x, y - 16)
+            nameLabel.Visible = true
+        else
+            nameLabel.Visible = false
+        end
+
+        distLabel.Text = BbEspDistOn and string.format('%.0f studs', distance) or ''
+        distLabel.Position = Vector2.new(x, pos.Y + 20)
+        distLabel.Visible = BbEspDistOn
+    end)
+
+    BbEspEntries[player] = { conn = conn, drawings = drawings }
+end
+
+local function BbEspDestroy(player)
+    local entry = BbEspEntries[player]
+
+    if entry then
+        if entry.conn then
+            pcall(function()
+                entry.conn:Disconnect()
+            end)
+        end
+
+        for _, d in ipairs(entry.drawings) do
+            if d and d.Destroy then
+                pcall(function()
+                    d:Destroy()
+                end)
+            elseif typeof(d) == 'table' and d.Visible ~= nil then
+                d.Visible = false
+            end
+        end
+
+        BbEspEntries[player] = nil
+    end
+end
+
+local function BbEspUpdateHighlight(player)
+    if player == BbEspLocal or not player.Character then
+        return
+    end
+
+    if BbEspHighlights[player] then
+        BbEspHighlights[player]:Destroy()
+        BbEspHighlights[player] = nil
+    end
+
+    if BbEspHighlightOn then
+        local highlight = Instance.new('Highlight')
+
+        highlight.Name = 'PlayerHighlight'
+        highlight.Adornee = player.Character
+        highlight.FillColor = Color3.fromRGB(136, 0, 153)
+        highlight.OutlineColor = Color3.fromRGB(136, 0, 153)
+        highlight.Parent = workspace
+
+        BbEspHighlights[player] = highlight
+    end
+end
+
+local function BbEspLoad()
+    for _, player in ipairs(BbEspPlayers:GetPlayers()) do
+        if player ~= BbEspLocal and not BbEspEntries[player] then
+            BbEspCreate(player)
+        end
+    end
+end
+
+BbEspPlayers.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function()
+        task.wait(0.1)
+
+        if not BbEspEntries[player] then
+            BbEspCreate(player)
+        end
+
+        BbEspUpdateHighlight(player)
+    end)
+
+    if player.Character and not BbEspEntries[player] then
+        task.wait(0.1)
+        BbEspCreate(player)
+    end
+end)
+
+BbEspPlayers.PlayerRemoving:Connect(function(player)
+    BbEspDestroy(player)
+
+    if BbEspHighlights[player] then
+        BbEspHighlights[player]:Destroy()
+        BbEspHighlights[player] = nil
+    end
+end)
+
+task.spawn(function()
+    while task.wait(0.01) do
+        if BbEspHighlightOn then
+            for _, player in ipairs(BbEspPlayers:GetPlayers()) do
+                BbEspUpdateHighlight(player)
+            end
+        end
+    end
+end)
+
+BbEspLoad()
 
 VisualTab:Toggle({
-    Title = "3D Box",
+    Title = 'Name',
+    Desc = 'ESP nombre (BB Hub)',
+    Flag = 'bb_name_esp',
     Icon = 'check',
     Type = 'Checkbox',
     Default = false,
-    Callback = function(Value) _G.ShowBox = Value end,
+    Callback = function(state)
+        BbEspNameOn = state
+    end,
 })
 
 VisualTab:Toggle({
-    Title = "Player Names",
+    Title = 'Health',
+    Desc = 'ESP barra de vida (BB Hub)',
+    Flag = 'bb_health_esp',
     Icon = 'check',
     Type = 'Checkbox',
     Default = false,
-    Callback = function(Value) _G.ShowName = Value end,
+    Callback = function(state)
+        BbEspHealthOn = state
+    end,
 })
 
 VisualTab:Toggle({
-    Title = "Health Bar",
+    Title = 'Distance',
+    Desc = 'ESP distancia en studs (BB Hub)',
+    Flag = 'bb_distance_esp',
     Icon = 'check',
     Type = 'Checkbox',
     Default = false,
-    Callback = function(Value) _G.ShowHealth = Value end,
+    Callback = function(state)
+        BbEspDistOn = state
+    end,
 })
 
 VisualTab:Toggle({
-    Title = "Tracers",
+    Title = 'Highlight',
+    Desc = 'Highlight morado en los jugadores (BB Hub)',
+    Flag = 'bb_highlight_esp',
     Icon = 'check',
     Type = 'Checkbox',
     Default = false,
-    Callback = function(Value) _G.ShowTracer = Value end,
-})
+    Callback = function(state)
+        BbEspHighlightOn = state
 
-VisualTab:Toggle({
-    Title = "Skeleton",
-    Icon = 'check',
-    Type = 'Checkbox',
-    Default = false,
-    Callback = function(Value) _G.ShowSkeleton = Value end,
+        for _, player in ipairs(BbEspPlayers:GetPlayers()) do
+            BbEspUpdateHighlight(player)
+        end
+    end,
 })
 
 _G.BbInvEnable = function(state)
