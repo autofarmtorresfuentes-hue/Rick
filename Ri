@@ -692,11 +692,13 @@ local MainTab = Window:Tab({
 })
 local BankBalance = MainTab:Button({
     Title = '\u{1f3e6} Bank Balance',
-    Desc = 'N/A',
+    
+    Desc = 'Shows the money stored in the bank',
 })
 local HandBalance = MainTab:Button({
     Title = '\u{1f4b8} Hand Balance',
-    Desc = 'N/A',
+    
+    Desc = 'Shows the money you carry in hand',
 })
 
 local function HandMoney()
@@ -755,6 +757,8 @@ end)
 
 MainTab:Toggle({
     Title = 'Walk Speed',
+
+    Desc = 'Turns the custom walk speed on or off',
     Flag = 'Walk Speed',
     Icon = 'check',
     Type = 'Checkbox',
@@ -765,6 +769,8 @@ MainTab:Toggle({
 })
 MainTab:Slider({
     Title = 'Speed Multiplier',
+
+    Desc = 'Walk speed value used while Walk Speed is on',
     Flag = 'speed_value',
     Step = 0.5,
     Value = {
@@ -786,6 +792,8 @@ local EnabledFlyJump = false
 
 MainTab:Toggle({
     Title = 'Fly Jump',
+
+    Desc = 'Hold the jump button to keep rising into the air',
     Flag = 'Fly',
     Icon = 'check',
     Type = 'Checkbox',
@@ -854,7 +862,8 @@ end
 
 MainTab:Toggle({
     Title = 'Jump Infinito',
-    Desc = 'Salta de nuevo en el aire; salto de 20 de altura',
+    
+    Desc = 'Lets you jump again in mid air with a fixed height of 20',
     Flag = 'jump_infinito',
     Icon = 'check',
     Type = 'Checkbox',
@@ -972,7 +981,8 @@ end)
 
 MainTab:Toggle({
     Title = 'Pickup items',
-    Desc = 'Recoge los items que esten cerca de ti (BB Hub)',
+    
+    Desc = 'Picks up dropped items around you automatically',
     Flag = 'pickup_items_bb',
     Icon = 'check',
     Type = 'Checkbox',
@@ -1030,7 +1040,8 @@ local SelectedRarity = { 'Common' }
 
 MainTab:Toggle({
     Title = 'Auto Drop',
-    Desc = 'Automatically drop items by rarity',
+    
+    Desc = 'Automatically drops items by rarity',
     Flag = 'AutoDrop',
     Icon = 'check',
     Type = 'Checkbox',
@@ -1042,7 +1053,8 @@ MainTab:Toggle({
 
 MainTab:Dropdown({
     Title = 'Select Rarity',
-    Desc = 'Choose rarity to auto drop',
+    
+    Desc = 'Rarity used by Auto Drop',
     Flag = 'DropRarity',
     Icon = 'list',
     Values = {
@@ -1198,7 +1210,8 @@ end)
 MainTab:Toggle({
     Title = 'Anti Lock',
     Flag = 'antilock',
-    Desc = 'No one can shoot u',
+    
+    Desc = 'Breaks the aim lock that other players put on you',
     Icon = 'shield',
     Type = 'Checkbox',
     Value = false,
@@ -1220,7 +1233,8 @@ MainTab:Toggle({
 MainTab:Toggle({
     Title = 'Montana On Top',
     Flag = 'HideName',
-    Desc = 'Tu nombre pasa a ser MONTANA ON TOP en rojo, no se quita al morir',
+    
+    Desc = 'Changes the game name on top to MONTANA ON TOP',
     Icon = 'check',
     Type = 'Checkbox',
     Value = false,
@@ -1334,7 +1348,8 @@ end
 
 MainTab:Toggle({
     Title = 'Anti Ragdoll',
-    Desc = 'No ragdoll lol',
+    
+    Desc = 'Stops your character from ragdolling when hit',
     Flag = 'AntiRagdoll',
     Icon = 'check',
     Type = 'Checkbox',
@@ -1457,7 +1472,8 @@ end
 
 MainTab:Toggle({
     Title = 'Anti Kill',
-    Desc = 'Normal Player cant Finish',
+    
+    Desc = 'Blocks enemies from finishing you at low health',
     Flag = 'antikill',
     Icon = 'check',
     Type = 'Checkbox',
@@ -1473,7 +1489,8 @@ MainTab:Toggle({
 MainTab:Toggle({
     Title = 'Auto Mask',
     Flag = 'automask',
-    Desc = 'Equip Shiesty',
+    
+    Desc = 'Puts on a mask automatically',
     Icon = 'check',
     Type = 'Checkbox',
     Callback = function(Value)
@@ -1525,7 +1542,8 @@ MainTab:Toggle({
 MainTab:Toggle({
     Title = 'Auto Health',
     Flag = 'autohealth',
-    Desc = 'Auto use Bloodbag',
+    
+    Desc = 'Uses a blood bag automatically when your health gets low',
     Icon = 'check',
     Type = 'Checkbox',
     Callback = function(state)
@@ -1727,7 +1745,8 @@ end)
 
 MainTab:Toggle({
     Title = 'Underground',
-    Desc = 'Baja con plataforma y al apagar te sube arriba (independiente del Snap)',
+    
+    Desc = 'Moves you under the map with a hidden platform that follows you',
     Flag = 'underground_platform',
     Icon = 'check',
     Type = 'Checkbox',
@@ -1743,6 +1762,8 @@ MainTab:Toggle({
 
 MainTab:Slider({
     Title = 'Underground Distance',
+
+    Desc = 'How deep under the map you stay',
     Flag = 'underground_distance',
     Step = 1,
     Value = {
@@ -1812,6 +1833,8 @@ end
 
 MainTab:Toggle({
     Title = 'Snap',
+
+    Desc = 'Drops you under the ground and back up; works on foot or in a car',
     Icon = 'check',
     Type = 'Checkbox',
     Value = false,
@@ -1830,6 +1853,8 @@ MainTab:Keybind({
 })
 MainTab:Slider({
     Title = 'Snap Height',
+
+    Desc = 'How deep Snap takes you under the ground',
     Flag = 'snap_height',
     Step = 1,
     Value = {
@@ -1841,259 +1866,6 @@ MainTab:Slider({
         YoffsetValue = value
     end,
 })
-
-do
-
--- ===========================================================
--- Widget Underground flotante (version propia, separada del Snap)
--- Activa/desactiva el Underground con plataforma: al activar baja,
--- al desactivar te sube arriba y se quita la plataforma.
--- ===========================================================
-_G.UGActive = _G.UGActive or false
-_G.UGDistance = _G.UGDistance or 25
-
-local UGWidgetDragging = false
-local UGWidgetSliderDragging = false
-local UGWidgetDragStart, UGWidgetFrameStart
-local UGWidgetUpdateSlider
-
-local UGGui = Instance.new('ScreenGui')
-
-UGGui.Name = 'UGWidget'
-UGGui.ResetOnSpawn = false
-UGGui.IgnoreGuiInset = true
-UGGui.DisplayOrder = 999
-UGGui.Parent = PlayerGui
-
-local UGFrame = Instance.new('Frame')
-
-UGFrame.Size = UDim2.new(0, 220, 0, 150)
-UGFrame.Position = UDim2.new(0, 12, 0.5, -75)
-UGFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
-UGFrame.BorderSizePixel = 0
-UGFrame.Active = true
-UGFrame.Parent = UGGui
-
-local UGCorner = Instance.new('UICorner')
-
-UGCorner.CornerRadius = UDim.new(0, 14)
-UGCorner.Parent = UGFrame
-
-local UGStroke = Instance.new('UIStroke')
-
-UGStroke.Thickness = 1.2
-UGStroke.Color = Color3.fromRGB(255, 100, 0)
-UGStroke.Transparency = 0.5
-UGStroke.Parent = UGFrame
-
--- version un poco mas pequena del widget original
-local UGScale = Instance.new('UIScale')
-
-UGScale.Scale = 0.85
-UGScale.Parent = UGFrame
-
-local UGTitleBar = Instance.new('Frame')
-
-UGTitleBar.Size = UDim2.new(1, 0, 0, 34)
-UGTitleBar.BackgroundColor3 = Color3.fromRGB(26, 26, 34)
-UGTitleBar.BorderSizePixel = 0
-UGTitleBar.Active = true
-UGTitleBar.Parent = UGFrame
-
-local UGTitleCorner = Instance.new('UICorner')
-
-UGTitleCorner.CornerRadius = UDim.new(0, 14)
-UGTitleCorner.Parent = UGTitleBar
-
-local UGTitle = Instance.new('TextLabel')
-
-UGTitle.Size = UDim2.new(1, -10, 1, 0)
-UGTitle.Position = UDim2.new(0, 10, 0, 0)
-UGTitle.BackgroundTransparency = 1
-UGTitle.Text = '⛏  Underground'
-UGTitle.Font = Enum.Font.GothamBold
-UGTitle.TextSize = 13
-UGTitle.TextColor3 = Color3.fromRGB(240, 240, 240)
-UGTitle.TextXAlignment = Enum.TextXAlignment.Left
-UGTitle.Parent = UGTitleBar
-
-UGTitleBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        UGWidgetDragging = true
-        UGWidgetDragStart = input.Position
-        UGWidgetFrameStart = UGFrame.Position
-    end
-end)
-
-local UGActivateBtn = Instance.new('TextButton')
-
-UGActivateBtn.Size = UDim2.new(1, -16, 0, 36)
-UGActivateBtn.Position = UDim2.new(0, 8, 0, 42)
-UGActivateBtn.BackgroundColor3 = Color3.fromRGB(38, 38, 50)
-UGActivateBtn.BorderSizePixel = 0
-UGActivateBtn.Text = '⏻  Activar'
-UGActivateBtn.Font = Enum.Font.GothamBold
-UGActivateBtn.TextSize = 14
-UGActivateBtn.TextColor3 = Color3.fromRGB(180, 180, 200)
-UGActivateBtn.AutoButtonColor = false
-UGActivateBtn.Parent = UGFrame
-
-local UGActivateCorner = Instance.new('UICorner')
-
-UGActivateCorner.CornerRadius = UDim.new(0, 10)
-UGActivateCorner.Parent = UGActivateBtn
-
-local UGWasActive = false
-
-local function UGUpdateActivateVisual()
-    if _G.UGActive then
-        UGActivateBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 0)
-        UGActivateBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        UGActivateBtn.Text = '⏻  Desactivar'
-    else
-        UGActivateBtn.BackgroundColor3 = Color3.fromRGB(38, 38, 50)
-        UGActivateBtn.TextColor3 = Color3.fromRGB(180, 180, 200)
-        UGActivateBtn.Text = '⏻  Activar'
-    end
-end
-
-UGActivateBtn.MouseButton1Click:Connect(function()
-    if _G.UGSetEnabled then
-        _G.UGSetEnabled(not _G.UGActive)
-    else
-        _G.UGActive = not _G.UGActive
-    end
-
-    UGUpdateActivateVisual()
-end)
-
--- Sincroniza el boton cuando el Underground se cambia desde el menu
-task.spawn(function()
-    while task.wait(0.2) do
-        if _G.UGActive ~= UGWasActive then
-            UGWasActive = _G.UGActive
-            UGUpdateActivateVisual()
-        end
-    end
-end)
-
-local UGHeightLabel = Instance.new('TextLabel')
-
-UGHeightLabel.Size = UDim2.new(1, -16, 0, 16)
-UGHeightLabel.Position = UDim2.new(0, 8, 0, 88)
-UGHeightLabel.BackgroundTransparency = 1
-UGHeightLabel.Text = 'Distancia : ' .. tostring(_G.UGDistance)
-UGHeightLabel.Font = Enum.Font.GothamMedium
-UGHeightLabel.TextSize = 12
-UGHeightLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-UGHeightLabel.TextXAlignment = Enum.TextXAlignment.Left
-UGHeightLabel.Parent = UGFrame
-
-local UGSliderBar = Instance.new('Frame')
-
-UGSliderBar.Size = UDim2.new(1, -16, 0, 22)
-UGSliderBar.Position = UDim2.new(0, 8, 0, 108)
-UGSliderBar.BackgroundColor3 = Color3.fromRGB(40, 40, 54)
-UGSliderBar.BorderSizePixel = 0
-UGSliderBar.Active = true
-UGSliderBar.Parent = UGFrame
-
-local UGSliderBarCorner = Instance.new('UICorner')
-
-UGSliderBarCorner.CornerRadius = UDim.new(0, 11)
-UGSliderBarCorner.Parent = UGSliderBar
-
-local UGSliderFill = Instance.new('Frame')
-
-UGSliderFill.BackgroundColor3 = Color3.fromRGB(255, 100, 0)
-UGSliderFill.BorderSizePixel = 0
-UGSliderFill.Size = UDim2.new(math.clamp((_G.UGDistance - 5) / 295, 0, 1), 0, 1, 0)
-UGSliderFill.Parent = UGSliderBar
-
-local UGSliderFillCorner = Instance.new('UICorner')
-
-UGSliderFillCorner.CornerRadius = UDim.new(0, 11)
-UGSliderFillCorner.Parent = UGSliderFill
-
-local UGSliderKnob = Instance.new('Frame')
-
-UGSliderKnob.Size = UDim2.new(0, 22, 0, 22)
-UGSliderKnob.AnchorPoint = Vector2.new(0.5, 0.5)
-UGSliderKnob.Position = UDim2.new(math.clamp((_G.UGDistance - 5) / 295, 0, 1), 0, 0.5, 0)
-UGSliderKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-UGSliderKnob.BorderSizePixel = 0
-UGSliderKnob.ZIndex = 3
-UGSliderKnob.Parent = UGSliderBar
-
-local UGSliderKnobCorner = Instance.new('UICorner')
-
-UGSliderKnobCorner.CornerRadius = UDim.new(1, 0)
-UGSliderKnobCorner.Parent = UGSliderKnob
-
-local UGKnobText = Instance.new('TextLabel')
-
-UGKnobText.Size = UDim2.new(1, 0, 1, 0)
-UGKnobText.BackgroundTransparency = 1
-UGKnobText.Text = tostring(_G.UGDistance)
-UGKnobText.Font = Enum.Font.GothamBold
-UGKnobText.TextSize = 10
-UGKnobText.TextColor3 = Color3.fromRGB(50, 50, 60)
-UGKnobText.ZIndex = 4
-UGKnobText.Parent = UGSliderKnob
-
-UGWidgetUpdateSlider = function(inputPos)
-    local alpha = (inputPos.X - UGSliderBar.AbsolutePosition.X) / math.max(UGSliderBar.AbsoluteSize.X, 1)
-
-    alpha = math.clamp(alpha, 0, 1)
-
-    local value = math.clamp(math.floor(5 + alpha * 295 + 0.5), 5, 300)
-
-    _G.UGDistance = value
-
-    local fill = (value - 5) / 295
-
-    UGSliderFill.Size = UDim2.new(fill, 0, 1, 0)
-    UGSliderKnob.Position = UDim2.new(fill, 0, 0.5, 0)
-    UGKnobText.Text = tostring(value)
-    UGHeightLabel.Text = 'Distancia : ' .. tostring(value)
-
-    pcall(function()
-        local window = getgenv().Window
-
-        if window and window.Toggles and window.Toggles.underground_distance then
-            window.Toggles.underground_distance:SetValue(value)
-        end
-    end)
-end
-
-UGSliderBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        UGWidgetSliderDragging = true
-        UGWidgetUpdateSlider(input.Position)
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        if UGWidgetDragging then
-            local delta = input.Position - UGWidgetDragStart
-
-            UGFrame.Position = UDim2.new(UGWidgetFrameStart.X.Scale, UGWidgetFrameStart.X.Offset + delta.X, UGWidgetFrameStart.Y.Scale, UGWidgetFrameStart.Y.Offset + delta.Y)
-        end
-        if UGWidgetSliderDragging then
-            UGWidgetUpdateSlider(input.Position)
-        end
-    end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        UGWidgetDragging = false
-        UGWidgetSliderDragging = false
-    end
-end)
-
-end
 
 local CombatTab = Window:Tab({
     Title = 'Combat',
@@ -2562,7 +2334,8 @@ task.spawn(function()
 
     CombatTab:Toggle({
         Title = 'Silent Aim',
-        Desc = 'Dispara solo a la cabeza mas cercana (BB Hub)',
+        
+        Desc = 'Redirects your gun shots to the locked enemy automatically',
         Flag = 'bb_silent_aim',
         Icon = 'check',
         Type = 'Checkbox',
@@ -2575,7 +2348,8 @@ task.spawn(function()
 
     CombatTab:Toggle({
         Title = 'Línea',
-        Desc = 'Line Lock: linea al objetivo con marco (BB Hub)',
+        
+        Desc = 'Draws a line to the enemy locked by Silent Aim',
         Flag = 'bb_line_lock',
         Icon = 'check',
         Type = 'Checkbox',
@@ -2588,6 +2362,8 @@ task.spawn(function()
 
     CombatTab:Slider({
         Title = 'FOV',
+
+        Desc = 'Size of the circle that decides who Silent Aim can lock',
         Flag = 'bb_fov_radius',
         Step = 1,
         Value = {
@@ -2626,6 +2402,8 @@ task.spawn(function()
 
     BbSafeDropdown = CombatTab:Dropdown({
         Title = 'Safe Friend Select',
+
+        Desc = 'Tap a player to make them a Safe Friend; tap again to undo it',
         Values = BbSafeBuildList(),
         Callback = function(value)
             local name = tostring(value or '')
@@ -2662,7 +2440,8 @@ task.spawn(function()
 
     CombatTab:Button({
         Title = 'Refresh Users',
-        Desc = 'Actualiza la lista de users del servidor',
+        
+        Desc = 'Refreshes the player list shown in Safe Friend Select',
         Callback = function()
             BbSafeRefresh()
         end,
@@ -2679,6 +2458,7 @@ task.spawn(function()
     end)
 end)
 
+do
 -- Auto Shoot (ChinoInfierno V3) + Speed Shoot
 -- - Auto Shoot: el auto target vive SOLO aqui; dispara al enemigo
 --   vivo mas cercano (sin ser Safe Friend, con linea de tiro y a
@@ -2825,7 +2605,8 @@ end)
 
 CombatTab:Toggle({
     Title = 'Auto Shoot',
-    Desc = 'Dispara solo al enemigo mas cercano (auto target integrado, ChinoInfierno)',
+    
+    Desc = 'Automatically shoots the closest valid enemy; the auto target is built into this option',
     Flag = 'auto_shoot',
     Icon = 'check',
     Type = 'Checkbox',
@@ -2838,7 +2619,8 @@ CombatTab:Toggle({
 
 CombatTab:Toggle({
     Title = 'Speed Shoot',
-    Desc = 'Cada disparo manual sale multiplicado (no afecta al Auto Shoot)',
+    
+    Desc = 'Fires extra shots every time you shoot manually',
     Flag = 'speed_shoot',
     Icon = 'check',
     Type = 'Checkbox',
@@ -2850,6 +2632,8 @@ CombatTab:Toggle({
 
 CombatTab:Slider({
     Title = 'Disparos por gatillo',
+
+    Desc = 'Number of shots per trigger pull: 2 = two shots, 3 = three',
     Flag = 'speed_shoot_count',
     Step = 1,
     Value = {
@@ -2862,6 +2646,8 @@ CombatTab:Slider({
     end,
 })
 
+
+end
 
 local Camera = workspace.CurrentCamera
 
@@ -3173,7 +2959,8 @@ end)
 
 CombatTab:Toggle({
     Title = 'Auto Attack',
-    Desc = 'Golpea al jugador mas cercano con tu arma melee',
+    
+    Desc = 'Swings your melee weapon at the closest player automatically',
     Flag = 'auto_attack_prome',
     Icon = 'check',
     Type = 'Checkbox',
@@ -3185,7 +2972,8 @@ CombatTab:Toggle({
 
 CombatTab:Toggle({
     Title = 'Melee Aura',
-    Desc = 'Modifica Fists y herramientas melee (restaura al apagar)',
+    
+    Desc = 'Hits nearby players automatically while your melee weapon is out',
     Flag = 'melee_aura_prome',
     Icon = 'check',
     Type = 'Checkbox',
@@ -3220,7 +3008,8 @@ local FireRateAttributeName = 'fire_rate'
 local AutomaticAttributeName = 'automatic'
 local CurrentGunLabel = WeaponTab:Button({
     Title = 'Current Gun',
-    Desc = 'None',
+    
+    Desc = 'Name of the gun the modifications are applied to',
 })
 
 local function FindFireRateAttribute(gun)
@@ -3479,6 +3268,8 @@ end
 
 WeaponTab:Toggle({
     Title = 'Enable Gun Mod',
+
+    Desc = 'Turns the gun modifications on or off',
     Flag = 'gun_mod_enabled',
     Icon = 'check',
     Type = 'Checkbox',
@@ -3506,6 +3297,8 @@ WeaponTab:Toggle({
 WeaponTab:Divider()
 WeaponTab:Toggle({
     Title = 'INFINITE Accuracy',
+
+    Desc = 'Makes every bullet land exactly on target',
     Flag = 'gun_max_accuracy',
     Icon = 'crosshair',
     Type = 'Checkbox',
@@ -3521,6 +3314,8 @@ WeaponTab:Toggle({
 })
 WeaponTab:Toggle({
     Title = 'INFINITE Range',
+
+    Desc = 'Removes the range limit of your gun',
     Flag = 'gun_max_range',
     Icon = 'crosshair',
     Type = 'Checkbox',
@@ -3536,6 +3331,8 @@ WeaponTab:Toggle({
 })
 WeaponTab:Toggle({
     Title = 'NO Recoil',
+
+    Desc = 'Removes the recoil of your gun',
     Flag = 'gun_no_recoil',
     Icon = 'check',
     Type = 'Checkbox',
@@ -3551,6 +3348,8 @@ WeaponTab:Toggle({
 })
 WeaponTab:Toggle({
     Title = 'INFINITE Fire Rate',
+
+    Desc = 'Makes your gun fire as fast as possible',
     Flag = 'gun_infinite_firerate',
     Icon = 'zap',
     Type = 'Checkbox',
@@ -3566,6 +3365,8 @@ WeaponTab:Toggle({
 })
 WeaponTab:Toggle({
     Title = 'MIN Reload Time',
+
+    Desc = 'Reduces your gun reload time to the minimum',
     Flag = 'gun_min_reload',
     Icon = 'check',
     Type = 'Checkbox',
@@ -3581,6 +3382,8 @@ WeaponTab:Toggle({
 })
 WeaponTab:Toggle({
     Title = 'Automatic Mode',
+
+    Desc = 'Makes your gun keep firing while the attack button is held',
     Flag = 'gun_automatic',
     Icon = 'check',
     Type = 'Checkbox',
@@ -3597,7 +3400,8 @@ WeaponTab:Toggle({
 WeaponTab:Divider()
 WeaponTab:Button({
     Title = 'Refresh All Guns',
-    Desc = 'Reapply modifications to all guns',
+    
+    Desc = 'Applies the gun modifications to all your guns again',
     Callback = function()
         if GunModSettings.Enabled then
             local count = ModAllGunsInBackpack()
@@ -3661,6 +3465,8 @@ end
 
 VehicleTab:Toggle({
     Title = 'Bump Aura',
+
+    Desc = 'Pushes away players who get too close to you',
     Flag = 'BumpAura',
     Icon = 'check',
     Type = 'Checkbox',
@@ -3681,7 +3487,286 @@ local VisualTab = Window:Tab({
 })
 
 VisualTab:Section({
-    Title = 'Items y Inventarios:',
+    Title = 'Players:',
+})
+
+-- ESP del BB Hub: Name / Health / Distance / Highlight
+-- (los Safe Friends se ven en verde, igual que en el BB Hub)
+local BbEspPlayers = game:GetService('Players')
+local BbEspLocal = BbEspPlayers.LocalPlayer
+local BbEspRunService = game:GetService('RunService')
+
+_G.MontanaSafeList = _G.MontanaSafeList or {}
+
+local BbEspNameOn = false
+local BbEspHealthOn = false
+local BbEspDistOn = false
+local BbEspHighlightOn = false
+
+local BbEspEntries = {}
+local BbEspHighlights = {}
+
+local function BbEspIsSafe(name)
+    name = string.lower(tostring(name or ''))
+
+    for _, pattern in ipairs(_G.MontanaSafeList) do
+        if pattern ~= '' and string.find(name, string.lower(pattern), 1, true) then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function BbEspCreate(player)
+    if BbEspEntries[player] then
+        return
+    end
+
+    local nameLabel = Drawing.new('Text')
+
+    nameLabel.Size = 16
+    nameLabel.Center = true
+    nameLabel.Outline = true
+    nameLabel.Color = BbEspIsSafe(player.Name) and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 255, 255)
+    nameLabel.Font = 4
+
+    local distLabel = Drawing.new('Text')
+
+    distLabel.Size = 14
+    distLabel.Center = true
+    distLabel.Outline = true
+    distLabel.Color = Color3.fromRGB(255, 255, 255)
+    distLabel.Font = 4
+
+    local hpBack = Drawing.new('Square')
+
+    hpBack.Filled = false
+    hpBack.Thickness = 1
+    hpBack.Color = Color3.fromRGB(0, 0, 0)
+    hpBack.Transparency = 0.9
+    hpBack.Visible = false
+
+    local hpFill = Drawing.new('Square')
+
+    hpFill.Filled = true
+    hpFill.Transparency = 0.9
+    hpFill.Visible = false
+
+    local drawings = { nameLabel, distLabel, hpBack, hpFill }
+
+    local conn
+
+    conn = BbEspRunService.RenderStepped:Connect(function()
+        if not player or not player.Character or not player.Character:FindFirstChild('HumanoidRootPart') then
+            for _, d in ipairs(drawings) do
+                d.Visible = false
+            end
+
+            return
+        end
+
+        local camera = workspace.CurrentCamera
+
+        if not camera then
+            return
+        end
+
+        local rootPart = player.Character.HumanoidRootPart
+        local humanoid = player.Character:FindFirstChild('Humanoid')
+        local distance = 0
+
+        if BbEspLocal.Character and BbEspLocal.Character:FindFirstChild('HumanoidRootPart') then
+            distance = (rootPart.Position - BbEspLocal.Character.HumanoidRootPart.Position).Magnitude
+        end
+
+        local pos, onScreen = camera:WorldToViewportPoint(rootPart.Position)
+
+        if not onScreen or pos.Z <= 0 then
+            for _, d in ipairs(drawings) do
+                d.Visible = false
+            end
+
+            return
+        end
+
+        local x = pos.X
+        local y = pos.Y - 15
+
+        if BbEspHealthOn and humanoid and humanoid.Health > 0 then
+            local pct = humanoid.Health / (humanoid.MaxHealth > 0 and humanoid.MaxHealth or 1)
+            local h = 4
+            local w = 60
+            local bx = x - w / 2
+
+            hpBack.Position = Vector2.new(bx, y - h - 2)
+            hpBack.Size = Vector2.new(w, h)
+            hpBack.Visible = true
+
+            hpFill.Position = Vector2.new(bx, y - h - 2)
+            hpFill.Size = Vector2.new(w * pct, h)
+            hpFill.Color = Color3.fromHSV(pct * 0.333, 0.8, 0.9)
+            hpFill.Visible = true
+
+            y = y - h - 6
+        else
+            hpBack.Visible = false
+            hpFill.Visible = false
+        end
+
+        if BbEspNameOn then
+            local minSize, maxSize = 14, 42
+            local alpha = math.clamp(distance / 50, 0, 1)
+            local size = maxSize - (maxSize - minSize) * alpha
+
+            nameLabel.Text = player.Name
+            nameLabel.Size = math.floor(size)
+            nameLabel.Color = BbEspIsSafe(player.Name) and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 255, 255)
+            nameLabel.Outline = true
+            nameLabel.Position = Vector2.new(x, y - 16)
+            nameLabel.Visible = true
+        else
+            nameLabel.Visible = false
+        end
+
+        distLabel.Text = BbEspDistOn and string.format('%.0f studs', distance) or ''
+        distLabel.Position = Vector2.new(x, pos.Y + 20)
+        distLabel.Visible = BbEspDistOn
+    end)
+
+    BbEspEntries[player] = { conn = conn, drawings = drawings }
+end
+
+local function BbEspDestroy(player)
+    local entry = BbEspEntries[player]
+
+    if entry then
+        if entry.conn then
+            pcall(function()
+                entry.conn:Disconnect()
+            end)
+        end
+
+        for _, d in ipairs(entry.drawings) do
+            if d and d.Destroy then
+                pcall(function()
+                    d:Destroy()
+                end)
+            elseif typeof(d) == 'table' and d.Visible ~= nil then
+                d.Visible = false
+            end
+        end
+
+        BbEspEntries[player] = nil
+    end
+end
+
+local function BbEspUpdateHighlight(player)
+    if player == BbEspLocal or not player.Character then
+        return
+    end
+
+    if BbEspHighlights[player] then
+        BbEspHighlights[player]:Destroy()
+        BbEspHighlights[player] = nil
+    end
+
+    if BbEspHighlightOn then
+        local highlight = Instance.new('Highlight')
+
+        highlight.Name = 'PlayerHighlight'
+        highlight.Adornee = player.Character
+        highlight.FillColor = Color3.fromRGB(136, 0, 153)
+        highlight.OutlineColor = Color3.fromRGB(136, 0, 153)
+        highlight.Parent = workspace
+
+        BbEspHighlights[player] = highlight
+    end
+end
+
+local function BbEspLoad()
+    for _, player in ipairs(BbEspPlayers:GetPlayers()) do
+        if player ~= BbEspLocal and not BbEspEntries[player] then
+            BbEspCreate(player)
+        end
+    end
+end
+
+BbEspPlayers.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function()
+        task.wait(0.1)
+
+        if not BbEspEntries[player] then
+            BbEspCreate(player)
+        end
+
+        BbEspUpdateHighlight(player)
+    end)
+
+    if player.Character and not BbEspEntries[player] then
+        task.wait(0.1)
+        BbEspCreate(player)
+    end
+end)
+
+BbEspPlayers.PlayerRemoving:Connect(function(player)
+    BbEspDestroy(player)
+
+    if BbEspHighlights[player] then
+        BbEspHighlights[player]:Destroy()
+        BbEspHighlights[player] = nil
+    end
+end)
+
+task.spawn(function()
+    while task.wait(0.01) do
+        if BbEspHighlightOn then
+            for _, player in ipairs(BbEspPlayers:GetPlayers()) do
+                BbEspUpdateHighlight(player)
+            end
+        end
+    end
+end)
+
+BbEspLoad()
+
+VisualTab:Toggle({
+    Title = 'Name',
+    
+    Desc = 'Shows the name of each player above their head',
+    Flag = 'bb_name_esp',
+    Icon = 'check',
+    Type = 'Checkbox',
+    Default = false,
+    Callback = function(state)
+        BbEspNameOn = state
+    end,
+})
+
+VisualTab:Toggle({
+    Title = 'Health',
+    
+    Desc = 'Shows the health of each player above their head',
+    Flag = 'bb_health_esp',
+    Icon = 'check',
+    Type = 'Checkbox',
+    Default = false,
+    Callback = function(state)
+        BbEspHealthOn = state
+    end,
+})
+
+VisualTab:Toggle({
+    Title = 'Distance',
+    
+    Desc = 'Shows how far each player is from you',
+    Flag = 'bb_distance_esp',
+    Icon = 'check',
+    Type = 'Checkbox',
+    Default = false,
+    Callback = function(state)
+        BbEspDistOn = state
+    end,
 })
 
 -- Inventory Viewer (BB Hub): iconos de las armas de cada jugador
@@ -3906,7 +3991,8 @@ do
 
     VisualTab:Toggle({
         Title = 'ESP Inventario',
-        Desc = 'Los inventarios de los jugadores con sus iconos y rareza (optimizado, sin lag)',
+        
+        Desc = 'Shows the inventory of every player above their head with icons and rarity',
         Flag = 'inventoryviewer',
         Icon = 'check',
         Type = 'Checkbox',
@@ -3982,7 +4068,8 @@ end
 
 VisualTab:Toggle({
     Title = 'ESP Drop',
-    Desc = 'Items del suelo con su rareza (iconos en el suelo)',
+    
+    Desc = 'Marks dropped items on the ground and shows their rarity',
     Flag = 'dropitem_viewer',
     Icon = 'check',
     Type = 'Checkbox',
@@ -4126,6 +4213,8 @@ local MiscTab = Window:Tab({
 
 MiscTab:Toggle({
     Title = 'Skip Animation',
+
+    Desc = 'Skips the crate opening animation',
     Flag = 'skip_anim',
     Icon = 'check',
     Type = 'Checkbox',
@@ -4149,6 +4238,8 @@ MiscTab:Toggle({
 })
 MiscTab:Toggle({
     Title = 'Infinite Hotbar',
+
+    Desc = 'Removes the limit of slots in your hotbar',
     Flag = 'infhotbar',
     Icon = 'check',
     Type = 'Checkbox',
@@ -4172,6 +4263,8 @@ MiscTab:Toggle({
 })
 MiscTab:Button({
     Title = 'Claim All Quest',
+
+    Desc = 'Claims the rewards of every quest at once',
     Callback = function()
         local Net = require(game.ReplicatedStorage.Modules.Core.Net)
         local QuestsData = require(game.ReplicatedStorage.Modules.Game.Quests.QuestsData)
@@ -4192,14 +4285,20 @@ MiscTab:Section({
 
 Window.selectedAmmoCrate = 'Pistol'
 
--- Ghost y TP (ChinoInfierno V3) con la imagen del hub como icono
--- - Ghost: atraviesas paredes moviendote en 3D segun la camara
---   (movimiento leido del control, funciona en movil).
--- - TP: te lanza hacia el item del suelo mas cercano (Fling TP).
-local GhostPlayers = game:GetService('Players')
-local GhostRunService = game:GetService('RunService')
-local GhostClient = GhostPlayers.LocalPlayer
-local GhostImage = 'https://cdn.discordapp.com/attachments/1567752934761042010/1568534166616809613/file_00000000d25c8212ac96082d082d82a5.png?ex=6af02ac7&is=6aeed947&hm=ce1800957b61839bfca3d0b676ecf83a6e68981e164b417e6b8cc96d26843c93'
+do
+-- Ghost y TP: GUIs flotantes originales con la imagen del hub
+-- - Ghost: card draggable 130x75 con foto de fondo, etiqueta, switch
+--   estilo iOS y tecla Q; atraviesas paredes moviendote en 3D segun
+--   la camara (movimiento leido del control, funciona en movil).
+-- - TP: card draggable con foto y pill original de Fling TP: al
+--   pulsarla te lanza hacia el item del suelo mas cercano.
+local FloatPlayers = game:GetService('Players')
+local FloatRunService = game:GetService('RunService')
+local FloatUserInput = game:GetService('UserInputService')
+local FloatTween = game:GetService('TweenService')
+local FloatClient = FloatPlayers.LocalPlayer
+local FloatGui = FloatClient:WaitForChild('PlayerGui')
+local FloatImage = 'https://cdn.discordapp.com/attachments/1567752934761042010/1568534166616809613/file_00000000d25c8212ac96082d082d82a5.png?ex=6af02ac7&is=6aeed947&hm=ce1800957b61839bfca3d0b676ecf83a6e68981e164b417e6b8cc96d26843c93'
 
 local GhostOn = false
 local GhostSpeed = 24
@@ -4207,6 +4306,26 @@ local GhostWasAnchored = false
 local GhostCollision = {}
 local GhostControls = nil
 local GhostConn = nil
+
+-- ========================================================--
+-- GHOST: estado y movimiento (ChinoInfierno original)
+-- ========================================================--
+local GhostSwitchBg = nil
+local GhostSwitchThumb = nil
+
+local function GhostUpdateSwitch()
+    if not GhostSwitchBg or not GhostSwitchThumb then
+        return
+    end
+
+    FloatTween:Create(GhostSwitchBg, TweenInfo.new(0.2), {
+        BackgroundColor3 = GhostOn and Color3.fromRGB(52, 199, 89) or Color3.fromRGB(50, 50, 60),
+    }):Play()
+
+    FloatTween:Create(GhostSwitchThumb, TweenInfo.new(0.2), {
+        Position = GhostOn and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8),
+    }):Play()
+end
 
 local function GhostSetNoclip(char, state)
     for _, part in ipairs(char:GetDescendants()) do
@@ -4233,7 +4352,7 @@ local function GhostMovement(dt)
         return
     end
 
-    local char = GhostClient.Character
+    local char = FloatClient.Character
     local root = char and char:FindFirstChild('HumanoidRootPart')
     local hum = char and char:FindFirstChildOfClass('Humanoid')
 
@@ -4300,8 +4419,9 @@ local function GhostSetState(state)
     end
 
     GhostOn = state
+    GhostUpdateSwitch()
 
-    local char = GhostClient.Character
+    local char = FloatClient.Character
     local root = char and char:FindFirstChild('HumanoidRootPart')
 
     if GhostOn then
@@ -4316,15 +4436,15 @@ local function GhostSetState(state)
 
         pcall(function()
             GhostControls = require(
-                GhostClient:WaitForChild('PlayerScripts'):WaitForChild('PlayerModule')
+                FloatClient:WaitForChild('PlayerScripts'):WaitForChild('PlayerModule')
             ):GetControls()
         end)
 
         if not GhostConn then
-            GhostConn = GhostRunService.RenderStepped:Connect(GhostMovement)
+            GhostConn = FloatRunService.RenderStepped:Connect(GhostMovement)
         end
     else
-        local current = GhostClient.Character
+        local current = FloatClient.Character
         local currentRoot = current and current:FindFirstChild('HumanoidRootPart')
 
         if currentRoot then
@@ -4342,7 +4462,7 @@ local function GhostSetState(state)
     end
 end
 
-GhostClient.CharacterAdded:Connect(function(char)
+FloatClient.CharacterAdded:Connect(function(char)
     task.wait(0.5)
 
     if GhostOn then
@@ -4356,53 +4476,174 @@ GhostClient.CharacterAdded:Connect(function(char)
     end
 end)
 
-local okGhost = pcall(function()
-    MiscTab:Toggle({
-        Title = 'Ghost',
-        Desc = 'Atraviesa paredes moviendote en 3D (ChinoInfierno)',
-        Flag = 'ghost_mode',
-        Icon = GhostImage,
-        Type = 'Checkbox',
-        Default = false,
-        Callback = function(state)
-            GhostSetState(state)
-        end,
-    })
+-- ========================================================--
+-- GUI GHOST (original: card con foto + switch iOS + tecla Q)
+-- ========================================================--
+local GhostFloatingSwitchGui = Instance.new('ScreenGui')
+GhostFloatingSwitchGui.Name = 'GhostFloatingSwitchGui'
+GhostFloatingSwitchGui.ResetOnSpawn = false
+GhostFloatingSwitchGui.IgnoreGuiInset = true
+GhostFloatingSwitchGui.DisplayOrder = 999998
+GhostFloatingSwitchGui.Parent = FloatGui
+
+local GhostCard = Instance.new('Frame', GhostFloatingSwitchGui)
+GhostCard.Size = UDim2.new(0, 130, 0, 75)
+GhostCard.Position = UDim2.new(0.04, 0, 0.58, 0)
+GhostCard.BackgroundColor3 = Color3.fromRGB(24, 27, 40)
+GhostCard.BackgroundTransparency = 0.35
+GhostCard.BorderSizePixel = 0
+GhostCard.Active = true
+GhostCard.Draggable = true
+GhostCard.ClipsDescendants = true
+Instance.new('UICorner', GhostCard).CornerRadius = UDim.new(0, 14)
+
+local GhostPhoto = Instance.new('ImageLabel', GhostCard)
+GhostPhoto.Name = 'PanelPhoto'
+GhostPhoto.Size = UDim2.new(1, 0, 1, 0)
+GhostPhoto.BackgroundTransparency = 1
+GhostPhoto.Image = FloatImage
+GhostPhoto.ImageTransparency = 0.68
+GhostPhoto.ScaleType = Enum.ScaleType.Crop
+GhostPhoto.ZIndex = 1
+Instance.new('UICorner', GhostPhoto).CornerRadius = UDim.new(0, 14)
+
+local GhostLabel = Instance.new('TextLabel', GhostCard)
+GhostLabel.Size = UDim2.new(0, 60, 0, 28)
+GhostLabel.Position = UDim2.new(0, 10, 0, 6)
+GhostLabel.BackgroundTransparency = 1
+GhostLabel.Text = 'Ghost'
+GhostLabel.TextColor3 = Color3.fromRGB(240, 240, 255)
+GhostLabel.TextSize = 12
+GhostLabel.Font = Enum.Font.GothamBold
+GhostLabel.TextXAlignment = Enum.TextXAlignment.Left
+GhostLabel.ZIndex = 3
+
+GhostSwitchBg = Instance.new('Frame', GhostCard)
+GhostSwitchBg.Size = UDim2.new(0, 36, 0, 20)
+GhostSwitchBg.Position = UDim2.new(1, -44, 0, 10)
+GhostSwitchBg.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+GhostSwitchBg.BorderSizePixel = 0
+GhostSwitchBg.ZIndex = 3
+Instance.new('UICorner', GhostSwitchBg).CornerRadius = UDim.new(1, 0)
+
+GhostSwitchThumb = Instance.new('Frame', GhostSwitchBg)
+GhostSwitchThumb.Size = UDim2.new(0, 16, 0, 16)
+GhostSwitchThumb.Position = UDim2.new(0, 2, 0.5, -8)
+GhostSwitchThumb.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+GhostSwitchThumb.BorderSizePixel = 0
+GhostSwitchThumb.ZIndex = 4
+Instance.new('UICorner', GhostSwitchThumb).CornerRadius = UDim.new(1, 0)
+
+local GhostSwitchBtn = Instance.new('TextButton', GhostSwitchBg)
+GhostSwitchBtn.Size = UDim2.new(1, 0, 1, 0)
+GhostSwitchBtn.BackgroundTransparency = 1
+GhostSwitchBtn.Text = ''
+GhostSwitchBtn.ZIndex = 5
+
+GhostSwitchBtn.Activated:Connect(function()
+    GhostSetState(not GhostOn)
 end)
 
-if not okGhost then
-    MiscTab:Toggle({
-        Title = 'Ghost',
-        Desc = 'Atraviesa paredes moviendote en 3D (ChinoInfierno)',
-        Flag = 'ghost_mode',
-        Icon = 'check',
-        Type = 'Checkbox',
-        Default = false,
-        Callback = function(state)
-            GhostSetState(state)
-        end,
-    })
-end
+local KeyLabelGhost = Instance.new('TextLabel', GhostCard)
+KeyLabelGhost.Size = UDim2.new(1, -16, 0, 22)
+KeyLabelGhost.Position = UDim2.new(0, 8, 0, 42)
+KeyLabelGhost.BackgroundTransparency = 1
+KeyLabelGhost.Text = 'Key: Q'
+KeyLabelGhost.TextColor3 = Color3.fromRGB(160, 170, 190)
+KeyLabelGhost.TextSize = 11
+KeyLabelGhost.Font = Enum.Font.Gotham
+KeyLabelGhost.TextXAlignment = Enum.TextXAlignment.Center
+KeyLabelGhost.ZIndex = 3
 
-local okTP = pcall(function()
-    MiscTab:Button({
-        Title = 'TP',
-        Desc = 'Te lanza hacia el item del suelo mas cercano (Fling TP)',
-        Icon = GhostImage,
-        Callback = function()
-            local char = GhostClient.Character
-            local root = char and char:FindFirstChild('HumanoidRootPart')
+-- Tecla Q para encender/apagar Ghost como en la GUI original
+FloatUserInput.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.Q then
+        GhostSetState(not GhostOn)
+    end
+end)
 
-            if not root then
-                return
-            end
+-- ========================================================--
+-- GUI TP (original: pill de Fling TP dentro de card con foto)
+-- ========================================================--
+local TPFloatingGui = Instance.new('ScreenGui')
+TPFloatingGui.Name = 'Montana_FlingTPSwitch'
+TPFloatingGui.ResetOnSpawn = false
+TPFloatingGui.IgnoreGuiInset = true
+TPFloatingGui.DisplayOrder = 999997
+TPFloatingGui.Parent = FloatGui
 
-            local dropped = workspace:FindFirstChild('DroppedItems')
+local TPCard = Instance.new('Frame', TPFloatingGui)
+TPCard.Size = UDim2.new(0, 130, 0, 60)
+TPCard.Position = UDim2.new(0.04, 0, 0.72, 0)
+TPCard.BackgroundColor3 = Color3.fromRGB(24, 27, 40)
+TPCard.BackgroundTransparency = 0.35
+TPCard.BorderSizePixel = 0
+TPCard.Active = true
+TPCard.Draggable = true
+TPCard.ClipsDescendants = true
+Instance.new('UICorner', TPCard).CornerRadius = UDim.new(0, 14)
 
-            if not dropped then
-                return
-            end
+local TPPhoto = Instance.new('ImageLabel', TPCard)
+TPPhoto.Name = 'PanelPhoto'
+TPPhoto.Size = UDim2.new(1, 0, 1, 0)
+TPPhoto.BackgroundTransparency = 1
+TPPhoto.Image = FloatImage
+TPPhoto.ImageTransparency = 0.68
+TPPhoto.ScaleType = Enum.ScaleType.Crop
+TPPhoto.ZIndex = 1
+Instance.new('UICorner', TPPhoto).CornerRadius = UDim.new(0, 14)
 
+local TPLabel = Instance.new('TextLabel', TPCard)
+TPLabel.Size = UDim2.new(0, 60, 0, 24)
+TPLabel.Position = UDim2.new(0, 10, 0, 5)
+TPLabel.BackgroundTransparency = 1
+TPLabel.Text = 'TP'
+TPLabel.TextColor3 = Color3.fromRGB(240, 240, 255)
+TPLabel.TextSize = 12
+TPLabel.Font = Enum.Font.GothamBold
+TPLabel.TextXAlignment = Enum.TextXAlignment.Left
+TPLabel.ZIndex = 3
+
+local TPSwitchBg = Instance.new('Frame', TPCard)
+TPSwitchBg.Size = UDim2.new(0, 44, 0, 24)
+TPSwitchBg.Position = UDim2.new(1, -52, 0.5, -12)
+TPSwitchBg.BackgroundColor3 = Color3.fromRGB(32, 35, 45)
+TPSwitchBg.BackgroundTransparency = 0.22
+TPSwitchBg.BorderSizePixel = 0
+TPSwitchBg.ZIndex = 100
+Instance.new('UICorner', TPSwitchBg).CornerRadius = UDim.new(1, 0)
+
+local TPKnob = Instance.new('Frame', TPSwitchBg)
+TPKnob.Size = UDim2.new(0, 18, 0, 18)
+TPKnob.Position = UDim2.new(0, 3, 0.5, -9)
+TPKnob.BackgroundColor3 = Color3.fromRGB(245, 247, 255)
+TPKnob.BorderSizePixel = 0
+TPKnob.ZIndex = 101
+Instance.new('UICorner', TPKnob).CornerRadius = UDim.new(1, 0)
+
+local TPHit = Instance.new('TextButton', TPSwitchBg)
+TPHit.Size = UDim2.fromScale(1, 1)
+TPHit.BackgroundTransparency = 1
+TPHit.Text = ''
+TPHit.ZIndex = 102
+
+-- Fling TP original: te lanza hacia el item del suelo mas cercano
+TPHit.Activated:Connect(function()
+    FloatTween:Create(TPSwitchBg, TweenInfo.new(0.16), {
+        BackgroundColor3 = Color3.fromRGB(0, 120, 255),
+    }):Play()
+
+    FloatTween:Create(TPKnob, TweenInfo.new(0.16), {
+        Position = UDim2.new(1, -21, 0.5, -9),
+    }):Play()
+
+    local char = FloatClient.Character
+    local root = char and char:FindFirstChild('HumanoidRootPart')
+
+    if root then
+        local dropped = workspace:FindFirstChild('DroppedItems')
+
+        if dropped then
             local bestPart = nil
             local bestDist = math.huge
 
@@ -4437,68 +4678,27 @@ local okTP = pcall(function()
                     root.AssemblyAngularVelocity = Vector3.new(5, 0, 4)
                 end
             end
-        end,
-    })
+        end
+    end
+
+    task.delay(0.42, function()
+        if TPSwitchBg and TPSwitchBg.Parent then
+            FloatTween:Create(TPSwitchBg, TweenInfo.new(0.16), {
+                BackgroundColor3 = Color3.fromRGB(32, 35, 45),
+            }):Play()
+
+            FloatTween:Create(TPKnob, TweenInfo.new(0.16), {
+                Position = UDim2.new(0, 3, 0.5, -9),
+            }):Play()
+        end
+    end)
 end)
 
-if not okTP then
-    MiscTab:Button({
-        Title = 'TP',
-        Desc = 'Te lanza hacia el item del suelo mas cercano (Fling TP)',
-        Callback = function()
-            local char = GhostClient.Character
-            local root = char and char:FindFirstChild('HumanoidRootPart')
-
-            if not root then
-                return
-            end
-
-            local dropped = workspace:FindFirstChild('DroppedItems')
-
-            if not dropped then
-                return
-            end
-
-            local bestPart = nil
-            local bestDist = math.huge
-
-            for _, item in ipairs(dropped:GetChildren()) do
-                if item:IsA('Model') then
-                    local part = item:FindFirstChild('PickUpZone', true)
-
-                    if part and not part:IsA('BasePart') then
-                        part = nil
-                    end
-
-                    part = part or item.PrimaryPart or item:FindFirstChildWhichIsA('BasePart', true)
-
-                    if part then
-                        local dist = (part.Position - root.Position).Magnitude
-
-                        if dist < bestDist then
-                            bestPart = part
-                            bestDist = dist
-                        end
-                    end
-                end
-            end
-
-            if bestPart then
-                local delta = bestPart.Position - root.Position
-
-                if delta.Magnitude > 0.1 then
-                    local power = math.clamp(bestDist * 2.1, 105, 225)
-
-                    root.AssemblyLinearVelocity = delta.Unit * power + Vector3.new(0, 48, 0)
-                    root.AssemblyAngularVelocity = Vector3.new(5, 0, 4)
-                end
-            end
-        end,
-    })
 end
-
 MiscTab:Dropdown({
     Title = 'Select Ammo Crate',
+
+    Desc = 'Ammo crate to open',
     Values = {
         'Pistol',
         'Rifle',
@@ -4512,6 +4712,8 @@ MiscTab:Dropdown({
 })
 MiscTab:Button({
     Title = 'Open Selected Ammo Crate',
+
+    Desc = 'Buys and opens the ammo crate selected above',
     Callback = function()
         local crate = workspace:WaitForChild('Map'):WaitForChild('Tiles'):WaitForChild('GunShopTile'):WaitForChild('PatriotWeapons'):WaitForChild('Interior'):WaitForChild('Crates'):WaitForChild('Ammo Crate'):WaitForChild('CrateOptions'):WaitForChild(Window.selectedAmmoCrate)
 
@@ -4524,6 +4726,8 @@ Window.selectedWeaponCrate = 'Basic'
 
 MiscTab:Dropdown({
     Title = 'Select Weapon Crate',
+
+    Desc = 'Weapon crate to open',
     Values = {
         'Basic',
         'Advanced',
@@ -4538,6 +4742,8 @@ MiscTab:Dropdown({
 })
 MiscTab:Button({
     Title = 'Open Selected Weapon Crate',
+
+    Desc = 'Buys and opens the weapon crate selected above',
     Callback = function()
         local crate = workspace:WaitForChild('Map'):WaitForChild('Tiles'):WaitForChild('GunShopTile'):WaitForChild('PatriotWeapons'):WaitForChild('Interior'):WaitForChild('Crates'):WaitForChild('Weapon Crate'):WaitForChild('CrateOptions'):WaitForChild(Window.selectedWeaponCrate)
 
@@ -4550,6 +4756,8 @@ Window.selectedCarCrate = 'Basic'
 
 MiscTab:Dropdown({
     Title = 'Select Car Crate',
+
+    Desc = 'Car crate to open',
     Values = {
         'Basic',
         'Rare',
@@ -4563,6 +4771,8 @@ MiscTab:Dropdown({
 })
 MiscTab:Button({
     Title = 'Open Selected Car Crate',
+
+    Desc = 'Buys and opens the car crate selected above',
     Callback = function()
         local crate = workspace:WaitForChild('Map'):WaitForChild('Tiles'):WaitForChild('PrestigeDealerAndHousing'):WaitForChild('PrestigeCarDealer'):WaitForChild('Interior'):WaitForChild('Crates'):WaitForChild('Car Crate'):WaitForChild('CrateOptions'):WaitForChild(Window.selectedCarCrate)
 
@@ -4577,7 +4787,8 @@ local GraphicsTab = Window:Tab({
 
 GraphicsTab:Button({
     Title = 'BoostFps',
-    Desc = 'SuperVeryUltraLowPotato Graphic',
+    
+    Desc = 'Disables heavy graphics like shadows and textures to gain FPS',
     Icon = 'rocket',
     Locked = false,
     Callback = function()
@@ -4590,7 +4801,8 @@ local WhiteScreenEnabled = false
 GraphicsTab:Toggle({
     Title = 'White Screen',
     Flag = 'white_screen',
-    Desc = '<<<3',
+    
+    Desc = 'Turns off 3D rendering to gain a lot of FPS',
     Locked = false,
     Callback = function(Value)
         WhiteScreenEnabled = Value
@@ -4626,6 +4838,8 @@ ServerTab:Input({
 })
 ServerTab:Button({
     Title = 'Join by Code',
+
+    Desc = 'Joins the private server code typed below',
     Icon = 'log-in',
     Callback = function()
         if not Window.ServerCode or Window.ServerCode == '' then
@@ -4639,6 +4853,8 @@ ServerTab:Button({
 })
 ServerTab:Button({
     Title = 'Rejoin Current Server',
+
+    Desc = 'Leaves and joins back the same server',
     Icon = 'refresh-ccw',
     Callback = function()
         game:GetService('TeleportService'):TeleportToPlaceInstance(game.PlaceId, game.JobId, game.Players.LocalPlayer)
@@ -4646,6 +4862,8 @@ ServerTab:Button({
 })
 ServerTab:Button({
     Title = 'Hop Server (Lowest Player)',
+
+    Desc = 'Moves you to the server with the fewest players',
     Icon = 'shuffle',
     Callback = function()
         local data = game:GetService('HttpService'):JSONDecode(game:HttpGet(string.format('https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100', game.PlaceId)))
@@ -4683,6 +4901,8 @@ ConfigTab:Input({
 })
 ConfigTab:Button({
     Title = 'Save Config',
+
+    Desc = 'Saves your current settings with the name below',
     Icon = 'save',
     Callback = function()
         if Window.ConfigName and Window.ConfigName ~= '' then
@@ -4703,6 +4923,8 @@ ConfigTab:Button({
 })
 ConfigTab:Button({
     Title = 'Load Config',
+
+    Desc = 'Loads the saved settings with the name below',
     Icon = 'folder-open',
     Callback = function()
         if Window.ConfigName and Window.ConfigName ~= '' then
@@ -4723,6 +4945,8 @@ ConfigTab:Button({
 })
 ConfigTab:Button({
     Title = 'Delete Config',
+
+    Desc = 'Deletes the saved settings with the name below',
     Icon = 'trash-2',
     Callback = function()
         if Window.ConfigName and Window.ConfigName ~= '' then
